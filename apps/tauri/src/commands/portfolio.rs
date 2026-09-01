@@ -1,3 +1,4 @@
+use crate::database::DatabaseRuntime;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
@@ -230,28 +231,26 @@ async fn resolve_current_valuation_scope(
 
 #[tauri::command]
 pub async fn get_holdings(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     filter: AccountScopeInput,
 ) -> Result<Vec<Holding>, String> {
+    let state = state.context()?;
     debug!("Get holdings...");
     let filter = filter.into_account_filter()?;
-    get_holdings_for_filter(state.inner().as_ref(), filter, false).await
+    get_holdings_for_filter(state.as_ref(), filter, false).await
 }
 
 #[tauri::command]
 pub async fn get_holdings_list(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     filter: AccountScopeInput,
     include_closed: Option<bool>,
 ) -> Result<Vec<HoldingListItem>, String> {
+    let state = state.context()?;
     debug!("Get holdings list...");
     let filter = filter.into_account_filter()?;
-    let holdings = get_holdings_for_filter(
-        state.inner().as_ref(),
-        filter,
-        include_closed.unwrap_or(false),
-    )
-    .await?;
+    let holdings =
+        get_holdings_for_filter(state.as_ref(), filter, include_closed.unwrap_or(false)).await?;
     Ok(holdings.into_iter().map(HoldingListItem::from).collect())
 }
 
@@ -288,10 +287,11 @@ async fn get_holdings_for_filter(
 
 #[tauri::command]
 pub async fn get_holding(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     account_id: String,
     asset_id: String,
 ) -> Result<Option<Holding>, String> {
+    let state = state.context()?;
     debug!(
         "Get specific holding for asset {} in account {}",
         asset_id, account_id
@@ -306,9 +306,10 @@ pub async fn get_holding(
 
 #[tauri::command]
 pub async fn get_asset_holdings(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     asset_id: String,
 ) -> Result<Vec<Holding>, String> {
+    let state = state.context()?;
     debug!("Get holdings for asset {} across all accounts", asset_id);
     let base_currency = state.get_base_currency();
     let accounts = state
@@ -334,10 +335,11 @@ pub async fn get_asset_holdings(
 
 #[tauri::command]
 pub async fn get_asset_lots(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     asset_id: String,
     include_snapshot_positions: bool,
 ) -> Result<Vec<AssetLotView>, String> {
+    let state = state.context()?;
     debug!("Get lot view rows for asset {}", asset_id);
     state
         .lots_repository
@@ -348,9 +350,10 @@ pub async fn get_asset_lots(
 
 #[tauri::command]
 pub async fn get_portfolio_allocations(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     filter: AccountScopeInput,
 ) -> Result<PortfolioAllocations, String> {
+    let state = state.context()?;
     let base_currency = state.get_base_currency();
     let filter = filter.into_account_filter()?;
     let resolved = resolve_scope(&filter, &state).await?;
@@ -376,11 +379,12 @@ pub async fn get_portfolio_allocations(
 
 #[tauri::command]
 pub async fn get_holdings_by_allocation(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     filter: AccountScopeInput,
     taxonomy_id: String,
     category_id: String,
 ) -> Result<AllocationHoldings, String> {
+    let state = state.context()?;
     let base_currency = state.get_base_currency();
     let filter = filter.into_account_filter()?;
     let resolved = resolve_scope(&filter, &state).await?;
@@ -408,12 +412,13 @@ pub async fn get_holdings_by_allocation(
 
 #[tauri::command]
 pub async fn get_historical_valuations(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     account_id: Option<String>,
     filter: Option<AccountScopeInput>,
     start_date: Option<String>,
     end_date: Option<String>,
 ) -> Result<Vec<DailyAccountValuation>, String> {
+    let state = state.context()?;
     let started_at = Instant::now();
     let debug_scope = log::log_enabled!(log::Level::Debug)
         .then(|| (format!("{:?}", account_id), format!("{:?}", filter)));
@@ -443,7 +448,7 @@ pub async fn get_historical_valuations(
             .portfolio_service()
             .resolve_account_scope(&account_filter, &base_currency)
             .map_err(|e| e.to_string())?;
-        let account_ids = holdings_account_ids(state.inner().as_ref(), &resolved.account_ids)?;
+        let account_ids = holdings_account_ids(state.as_ref(), &resolved.account_ids)?;
         if account_ids.is_empty() {
             Ok(Vec::new())
         } else if account_ids.len() == 1 {
@@ -464,8 +469,7 @@ pub async fn get_historical_valuations(
                 .map_err(|e| e.to_string())
         }
     } else if let Some(account_id) = account_id {
-        let account_ids =
-            holdings_account_ids(state.inner().as_ref(), std::slice::from_ref(&account_id))?;
+        let account_ids = holdings_account_ids(state.as_ref(), std::slice::from_ref(&account_id))?;
         if account_ids.is_empty() {
             return Ok(Vec::new());
         }
@@ -479,7 +483,7 @@ pub async fn get_historical_valuations(
             .portfolio_service()
             .resolve_account_scope(&AccountScope::All, &base_currency)
             .map_err(|e| e.to_string())?;
-        let account_ids = holdings_account_ids(state.inner().as_ref(), &resolved.account_ids)?;
+        let account_ids = holdings_account_ids(state.as_ref(), &resolved.account_ids)?;
         if account_ids.is_empty() {
             return Ok(Vec::new());
         }
@@ -509,9 +513,10 @@ pub async fn get_historical_valuations(
 
 #[tauri::command]
 pub async fn get_latest_valuations(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     account_ids: Vec<String>,
 ) -> Result<Vec<DailyAccountValuation>, String> {
+    let state = state.context()?;
     debug!("Get latest valuations for accounts: {:?}", account_ids);
 
     let ids_to_process: Vec<String> = if account_ids.is_empty() {
@@ -523,9 +528,9 @@ pub async fn get_latest_valuations(
             .into_iter()
             .map(|acc| acc.id)
             .collect::<Vec<_>>();
-        holdings_account_ids(state.inner().as_ref(), &active_ids)?
+        holdings_account_ids(state.as_ref(), &active_ids)?
     } else {
-        holdings_account_ids(state.inner().as_ref(), &account_ids)?
+        holdings_account_ids(state.as_ref(), &account_ids)?
     };
 
     if ids_to_process.is_empty() {
@@ -540,10 +545,11 @@ pub async fn get_latest_valuations(
 
 #[tauri::command]
 pub async fn get_current_valuation(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     filter: AccountScopeInput,
     include_accounts: Option<bool>,
 ) -> Result<CurrentValuationResponse, String> {
+    let state = state.context()?;
     debug!("Get scoped current valuation...");
 
     let base_currency = state.get_base_currency();
@@ -578,9 +584,10 @@ pub async fn get_current_valuation(
 
 #[tauri::command]
 pub async fn get_income_summary(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     filter: Option<AccountScopeInput>,
 ) -> Result<Vec<IncomeSummary>, String> {
+    let state = state.context()?;
     debug!("Fetching income summary...");
     let account_ids: Vec<String> = if let Some(input) = filter {
         let af = input.into_account_filter()?;
@@ -609,9 +616,10 @@ pub async fn get_income_summary(
 
 #[tauri::command]
 pub async fn calculate_accounts_simple_performance(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     account_ids: Vec<String>,
 ) -> Result<Vec<SimplePerformanceMetrics>, String> {
+    let state = state.context()?;
     debug!(
         "Calculate simple performance for accounts: {:?}",
         account_ids
@@ -648,7 +656,7 @@ pub async fn calculate_accounts_simple_performance(
 /// tracking_mode: Optional tracking mode for the account ("HOLDINGS" or "TRANSACTIONS")
 #[tauri::command]
 pub async fn calculate_performance_history(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     item_type: String,
     item_id: String,
     start_date: Option<String>,
@@ -656,6 +664,7 @@ pub async fn calculate_performance_history(
     tracking_mode: Option<String>,
     filter: Option<AccountScopeInput>,
 ) -> Result<PerformanceResult, String> {
+    let state = state.context()?;
     debug!(
         "Calculating performance for type: {}, id: {}, start: {:?}, end: {:?}, tracking_mode: {:?}",
         item_type, item_id, start_date, end_date, tracking_mode
@@ -689,8 +698,7 @@ pub async fn calculate_performance_history(
             .portfolio_service()
             .resolve_account_scope(&account_filter, &base_currency)
             .map_err(|e| e.to_string())?;
-        let accounts_by_id =
-            performance_accounts_by_id(state.inner().as_ref(), &resolved.account_ids)?;
+        let accounts_by_id = performance_accounts_by_id(state.as_ref(), &resolved.account_ids)?;
         let account_ids = performance_account_ids_from_map(&accounts_by_id, &resolved.account_ids);
         if account_ids.is_empty() {
             let mut result = empty_performance_metrics(
@@ -773,7 +781,7 @@ pub async fn calculate_performance_history(
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
 pub async fn calculate_performance_summary(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     item_type: String,
     item_id: String,
     start_date: Option<String>,
@@ -782,6 +790,7 @@ pub async fn calculate_performance_summary(
     filter: Option<AccountScopeInput>,
     profile: Option<PerformanceSummaryProfile>,
 ) -> Result<PerformanceResult, String> {
+    let state = state.context()?;
     debug!(
         "Calculating performance summary for type: {}, id: {}, start: {:?}, end: {:?}, tracking_mode: {:?}",
         item_type, item_id, start_date, end_date, tracking_mode
@@ -818,8 +827,7 @@ pub async fn calculate_performance_summary(
             .portfolio_service()
             .resolve_account_scope(&account_filter, &base_currency)
             .map_err(|e| e.to_string())?;
-        let accounts_by_id =
-            performance_accounts_by_id(state.inner().as_ref(), &resolved.account_ids)?;
+        let accounts_by_id = performance_accounts_by_id(state.as_ref(), &resolved.account_ids)?;
         let account_ids = performance_account_ids_from_map(&accounts_by_id, &resolved.account_ids);
         if account_ids.is_empty() {
             let mut result = empty_performance_metrics(
@@ -940,12 +948,13 @@ pub async fn calculate_performance_summary(
 
 #[tauri::command]
 pub async fn get_performance_summaries(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     scopes: Vec<PerformanceSummaryScopeInput>,
     start_date: Option<String>,
     end_date: Option<String>,
     profile: Option<PerformanceSummaryProfile>,
 ) -> Result<HashMap<String, PerformanceResult>, String> {
+    let state = state.context()?;
     let start_date_opt: Option<chrono::NaiveDate> = start_date
         .map(|date_str| {
             chrono::NaiveDate::parse_from_str(&date_str, "%Y-%m-%d")
@@ -967,8 +976,7 @@ pub async fn get_performance_summaries(
             .iter()
             .flat_map(|scope| scope.account_ids.iter().cloned()),
     );
-    let accounts_by_id =
-        performance_accounts_by_id(state.inner().as_ref(), &requested_account_ids)?;
+    let accounts_by_id = performance_accounts_by_id(state.as_ref(), &requested_account_ids)?;
     let batch_scopes = scopes
         .into_iter()
         .map(|scope| PerformanceSummaryBatchScope {
@@ -1076,13 +1084,14 @@ pub struct HoldingInput {
 /// Ensures assets and FX pairs are created before saving, following the same pattern as activities.
 #[tauri::command]
 pub async fn save_manual_holdings(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     _handle: AppHandle,
     account_id: String,
     holdings: Vec<HoldingInput>,
     cash_balances: HashMap<String, String>,
     snapshot_date: Option<String>,
 ) -> Result<(), String> {
+    let state = state.context()?;
     debug!(
         "Saving manual holdings for account {}: {} holdings, {} cash balances",
         account_id,
@@ -1205,10 +1214,11 @@ pub struct CheckHoldingsImportResult {
 
 #[tauri::command]
 pub async fn check_holdings_import(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     account_id: String,
     snapshots: Vec<HoldingsSnapshotInput>,
 ) -> Result<CheckHoldingsImportResult, String> {
+    let state = state.context()?;
     debug!(
         "Checking {} holdings snapshots for account {}",
         snapshots.len(),
@@ -1358,11 +1368,12 @@ pub struct ImportHoldingsCsvResult {
 /// - Multiple dates create multiple snapshots
 #[tauri::command]
 pub async fn import_holdings_csv(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     _handle: AppHandle,
     account_id: String,
     snapshots: Vec<HoldingsSnapshotInput>,
 ) -> Result<ImportHoldingsCsvResult, String> {
+    let state = state.context()?;
     info!(
         "Importing {} holdings snapshots for account {}",
         snapshots.len(),
@@ -1431,7 +1442,7 @@ pub async fn import_holdings_csv(
 /// Helper function to import a single holdings snapshot
 /// Returns the list of asset IDs that were created/used
 async fn import_single_snapshot(
-    state: &State<'_, Arc<ServiceContext>>,
+    state: &Arc<ServiceContext>,
     account_id: &str,
     account_currency: &str,
     base_currency: &str,
@@ -1544,11 +1555,12 @@ async fn import_single_snapshot(
 /// Optionally filtered by date range. Returns snapshot metadata without full position details.
 #[tauri::command]
 pub async fn get_snapshots(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     account_id: String,
     date_from: Option<String>, // YYYY-MM-DD, inclusive
     date_to: Option<String>,   // YYYY-MM-DD, inclusive
 ) -> Result<Vec<SnapshotInfo>, String> {
+    let state = state.context()?;
     debug!(
         "Getting snapshots for account: {} (from: {:?}, to: {:?})",
         account_id, date_from, date_to
@@ -1595,10 +1607,11 @@ pub async fn get_snapshots(
 /// Returns holdings in the same format as get_holdings (without live valuation).
 #[tauri::command]
 pub async fn get_snapshot_by_date(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     account_id: String,
     date: String,
 ) -> Result<Vec<Holding>, String> {
+    let state = state.context()?;
     debug!(
         "Getting snapshot holdings for account {} on date {}",
         account_id, date
@@ -1794,12 +1807,13 @@ pub async fn get_snapshot_by_date(
 /// Calculated snapshots are only deletable when their date requires remediation.
 #[tauri::command]
 pub async fn delete_snapshot(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     handle: AppHandle,
     account_id: String,
     date: String,
     snapshot_id: Option<String>,
 ) -> Result<(), String> {
+    let state = state.context()?;
     debug!(
         "Deleting snapshot for account {} on date {}",
         account_id, date

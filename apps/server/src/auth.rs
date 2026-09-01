@@ -254,6 +254,22 @@ pub fn derive_keys(master: &[u8]) -> ([u8; 32], [u8; 32]) {
     (jwt_key, secrets_key)
 }
 
+/// Derives the database encryption key from the master secret.
+///
+/// Stateless by design: nothing is stored, so a `.db` copied to any instance
+/// sharing `WF_SECRET_KEY` simply opens. Rotating this key means rotating the
+/// database, the JWT key and `secrets.json` coherently.
+pub fn derive_database_key(master: &[u8]) -> [u8; 32] {
+    use hkdf::Hkdf;
+    use sha2::Sha256;
+
+    let mut key = [0u8; 32];
+    Hkdf::<Sha256>::new(None, master)
+        .expand(b"wealthfolio-db", &mut key)
+        .expect("32 bytes is a valid HKDF-SHA256 output length");
+    key
+}
+
 pub fn decode_secret_key(raw: &str) -> anyhow::Result<Vec<u8>> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {

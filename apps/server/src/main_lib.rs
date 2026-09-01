@@ -107,6 +107,8 @@ pub struct AppState {
     pub ai_chat_service: Arc<ChatService<ServerAiEnvironment>>,
     pub data_root: String,
     pub db_path: String,
+    /// Path plus key for the live database, so backups apply `PRAGMA key`.
+    pub db_access: db::DbAccess,
     pub secret_store: Arc<dyn SecretStore>,
     pub event_bus: EventBus,
     pub auth: Option<Arc<AuthManager>>,
@@ -239,10 +241,166 @@ fn start_sync_outbox_wake_worker(
     });
 }
 
+/// Supplies the database key derived from `WF_SECRET_KEY`.
+///
+/// Nothing is stored: the key exists whenever the master secret does, which is
+/// what makes a server database portable across any instance sharing it.
+struct DerivedKeyProvider {
+    key: [u8; 32],
+}
+
+impl wealthfolio_storage_sqlite::db::KeyProvider for DerivedKeyProvider {
+    fn existing(&self) -> wealthfolio_core::errors::Result<Option<db::DbEncryptionKey>> {
+        Ok(Some(db::DbEncryptionKey::from_bytes(&self.key)))
+    }
+
+    fn create(&self) -> wealthfolio_core::errors::Result<db::DbEncryptionKey> {
+        Ok(db::DbEncryptionKey::from_bytes(&self.key))
+    }
+}
+
+/// Opens the database and refuses to start when its state disagrees with
+/// `WF_DB_REQUIRE_ENCRYPTION`.
+///
+/// Fail closed in both directions. Booting an encrypted database with the flag
+/// unset would run a configuration the operator did not ask for; booting a
+/// plaintext database with the flag set would claim encryption the file does not
+/// have. Neither should be papered over.
+fn open_database(config: &Config) -> anyhow::Result<db::DbAccess> {
+    let provider = DerivedKeyProvider {
+        key: config.database_key,
+    };
+    let policy = if config.db_encryption_required {
+        db::EncryptionPolicy::Encrypted
+    } else {
+        db::EncryptionPolicy::Plaintext
+    };
+
+    let db_path = db::get_db_path(&config.db_path);
+
+    // Startup owns the database, so it is the one place allowed to clear the
+    // scratch directory of snapshots a crash left behind. The offline
+    // conversion command deliberately does not: it may be run while an instance
+    // is still serving, and would delete that instance's in-flight snapshots.
+    db::purge_scratch_dir(std::path::Path::new(&db_path));
+
+    let access = db::bootstrap(&db_path, &provider, policy)?;
+
+    match (access.is_encrypted(), config.db_encryption_required) {
+        (true, false) => anyhow::bail!(
+            "Refusing to start: the database at {} is encrypted but WF_DB_REQUIRE_ENCRYPTION is not \
+             enabled.\n\n\
+             Set WF_DB_REQUIRE_ENCRYPTION=1 to start, or decrypt the database with:\n  \
+             wealthfolio-server db decrypt",
+            access.path()
+        ),
+        (false, true) => anyhow::bail!(
+            "Refusing to start: WF_DB_REQUIRE_ENCRYPTION is enabled but the database at {} is not \
+             encrypted.\n\n\
+             Encrypt it with:\n  wealthfolio-server db encrypt\n\n\
+             Or unset WF_DB_REQUIRE_ENCRYPTION to keep running unencrypted.",
+            access.path()
+        ),
+        _ => Ok(access),
+    }
+}
+
+/// Converts the database between plaintext and encrypted, offline.
+///
+/// Deliberately not an API call: replacing the database file requires that
+/// nothing is connected to it, which on the server means the process is not
+/// serving. Run it with the server stopped.
+pub fn run_database_maintenance(encrypt: bool) -> anyhow::Result<()> {
+    // Deliberately not `Config::from_env()`: that enforces the *listening*
+    // server's policy (auth required off loopback, CORS, MCP) and panics when it
+    // is unmet. Converting the database opens no socket, so it must not be
+    // gated by any of it — it needs the master secret and the path, nothing more.
+    dotenvy::dotenv().ok();
+
+    let secret_key = std::env::var("WF_SECRET_KEY")
+        .map_err(|_| anyhow::anyhow!("WF_SECRET_KEY must be set to convert the database"))?;
+    let raw_secret_key = crate::auth::decode_secret_key(&secret_key)?;
+    let db_path = std::env::var("WF_DB_PATH").unwrap_or_else(|_| DEFAULT_DB_PATH.to_string());
+
+    std::env::set_var("DATABASE_URL", &db_path);
+
+    let database_key = crate::auth::derive_database_key(&raw_secret_key);
+    let provider = DerivedKeyProvider { key: database_key };
+
+    // Converting a database that is not there is never what the operator meant.
+    // Without this check `bootstrap` would happily *create* one — encrypted,
+    // under the encrypt policy — and the run would report "already encrypted;
+    // nothing to do", leaving an empty database at a mistyped WF_DB_PATH or on
+    // an unmounted volume while the real data sits untouched elsewhere.
+    let resolved_path = db::get_db_path(&db_path);
+    if !std::path::Path::new(&resolved_path).exists() {
+        anyhow::bail!(
+            "No database found at {resolved_path}.\n\n\
+             Check WF_DB_PATH and that the data volume is mounted. Nothing was created."
+        );
+    }
+
+    // The policy only decides how a database that does not exist yet is created,
+    // so take it from the operation being asked for; an existing file is always
+    // resolved by probing.
+    let policy = if encrypt {
+        db::EncryptionPolicy::Encrypted
+    } else {
+        db::EncryptionPolicy::Plaintext
+    };
+    let current = db::bootstrap(&resolved_path, &provider, policy)?;
+
+    if current.is_encrypted() == encrypt {
+        tracing::info!(
+            "Database at {} is already {}; nothing to do",
+            current.path(),
+            if encrypt { "encrypted" } else { "plaintext" }
+        );
+        return Ok(());
+    }
+
+    // Migrations must be current before the file is copied: the candidate is a
+    // logical copy of whatever schema the source has.
+    current.run_migrations()?;
+
+    let data_root = std::path::Path::new(current.path())
+        .parent()
+        .unwrap_or_else(|| std::path::Path::new("."))
+        .to_string_lossy()
+        .into_owned();
+
+    let request = if encrypt {
+        db::maintenance::MaintenanceRequest::Enable {
+            key: Arc::new(db::DbEncryptionKey::from_bytes(&database_key)),
+        }
+    } else {
+        db::maintenance::MaintenanceRequest::Disable
+    };
+
+    let outcome = db::maintenance::run(&data_root, &current, request)?;
+    tracing::info!(
+        "Database at {} is now {}",
+        outcome.access.path(),
+        if outcome.access.is_encrypted() {
+            "encrypted"
+        } else {
+            "plaintext"
+        }
+    );
+    if let Some(backup) = outcome.pre_operation_backup {
+        tracing::info!("Pre-operation backup retained at {}", backup);
+    }
+    Ok(())
+}
+
+/// Default location of the database when `WF_DB_PATH` is unset.
+pub const DEFAULT_DB_PATH: &str = "./db/app.db";
+
 pub async fn build_state(config: &Config) -> anyhow::Result<Arc<AppState>> {
     // Ensure DATABASE_URL aligns with WF_DB_PATH so core picks the right file
     std::env::set_var("DATABASE_URL", &config.db_path);
-    let db_path = db::init(&config.db_path)?;
+    let db_access = open_database(config)?;
+    let db_path = db_access.path().to_string();
     tracing::info!("Database path in use: {}", db_path);
     let data_root_path = std::path::Path::new(&db_path)
         .parent()
@@ -265,11 +423,11 @@ pub async fn build_state(config: &Config) -> anyhow::Result<Arc<AppState>> {
         resolved_secret_path.to_string_lossy().to_string(),
     );
 
-    db::run_migrations(&db_path)?;
+    db_access.run_migrations()?;
 
-    let pool = db::create_pool(&db_path)?;
+    let pool = db_access.create_pool()?;
     let (sync_outbox_wake_sender, sync_outbox_wake_receiver) = tokio::sync::mpsc::channel(128);
-    let writer = write_actor::spawn_writer_with_outbox_observer(
+    let (writer, _writer_task) = write_actor::spawn_writer_with_outbox_observer(
         (*pool).clone(),
         Arc::new(move || {
             let _ = sync_outbox_wake_sender.try_send(());
@@ -900,6 +1058,7 @@ pub async fn build_state(config: &Config) -> anyhow::Result<Arc<AppState>> {
         ai_chat_service,
         data_root,
         db_path,
+        db_access,
         secret_store,
         event_bus,
         auth: auth_manager,

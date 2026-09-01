@@ -1,7 +1,6 @@
+use crate::database::DatabaseRuntime;
 use std::collections::HashMap;
-use std::sync::Arc;
 
-use crate::context::ServiceContext;
 use log::debug;
 use tauri::State;
 use wealthfolio_core::activities::{
@@ -30,8 +29,9 @@ pub async fn search_activities(
     date_to: Option<String>,           // Optional end date filter (YYYY-MM-DD, inclusive)
     instrument_type_filter: Option<Vec<String>>, // Optional instrument_type filter
     activity_id_filter: Option<Vec<String>>, // Optional exact activity-id filter
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<ActivitySearchResponse, String> {
+    let state = state.context()?;
     debug!("Search activities... {}, {}", page, page_size);
 
     // Parse date strings to NaiveDate
@@ -67,8 +67,9 @@ pub async fn search_activities(
 #[tauri::command]
 pub async fn create_activity(
     activity: NewActivity,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Activity, String> {
+    let state = state.context()?;
     debug!("Creating activity...");
     // Domain events handle recalculation and asset enrichment automatically
     let created = state
@@ -83,8 +84,9 @@ pub async fn create_activity(
 #[tauri::command]
 pub async fn update_activity(
     activity: ActivityUpdate,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Activity, String> {
+    let state = state.context()?;
     debug!("Updating activity...");
     // Domain events handle recalculation and asset enrichment automatically
     let updated = state
@@ -99,8 +101,9 @@ pub async fn update_activity(
 #[tauri::command]
 pub async fn delete_activity(
     activity_id: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Activity, String> {
+    let state = state.context()?;
     debug!("Deleting activity...");
     // Domain events handle recalculation automatically
     let deleted = state
@@ -115,8 +118,9 @@ pub async fn delete_activity(
 #[tauri::command]
 pub async fn get_transfer_pair_for_activity(
     activity_id: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<InternalTransferPairResponse, String> {
+    let state = state.context()?;
     debug!("Getting transfer pair...");
     state
         .activity_service()
@@ -127,8 +131,9 @@ pub async fn get_transfer_pair_for_activity(
 #[tauri::command]
 pub async fn find_transfer_match_candidates(
     request: TransferMatchCandidateRequest,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Vec<TransferMatchCandidate>, String> {
+    let state = state.context()?;
     debug!("Finding transfer match candidates...");
     state
         .activity_service()
@@ -139,8 +144,9 @@ pub async fn find_transfer_match_candidates(
 #[tauri::command]
 pub async fn save_internal_transfer_pair(
     request: InternalTransferPairRequest,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<InternalTransferPairResponse, String> {
+    let state = state.context()?;
     debug!("Saving internal transfer pair...");
     let pair = state
         .activity_service()
@@ -155,8 +161,9 @@ pub async fn save_internal_transfer_pair(
 pub async fn link_transfer_activities(
     activity_a_id: String,
     activity_b_id: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<(Activity, Activity), String> {
+    let state = state.context()?;
     debug!("Linking transfer activities...");
     // Domain events handle recalculation automatically
     let pair = state
@@ -172,8 +179,9 @@ pub async fn link_transfer_activities(
 pub async fn unlink_transfer_activities(
     activity_a_id: String,
     activity_b_id: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<(Activity, Activity), String> {
+    let state = state.context()?;
     debug!("Unlinking transfer activities...");
     // Domain events handle recalculation automatically
     let pair = state
@@ -188,8 +196,9 @@ pub async fn unlink_transfer_activities(
 #[tauri::command]
 pub async fn save_activities(
     request: ActivityBulkMutationRequest,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<ActivityBulkMutationResult, String> {
+    let state = state.context()?;
     let create_count = request.creates.len();
     let update_count = request.updates.len();
     let delete_count = request.delete_ids.len();
@@ -212,8 +221,9 @@ pub async fn save_activities(
 pub async fn get_account_import_mapping(
     account_id: String,
     context_kind: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<ImportMappingData, String> {
+    let state = state.context()?;
     debug!("Getting import mapping for account: {}", account_id);
     Ok(state
         .activity_service()
@@ -223,8 +233,9 @@ pub async fn get_account_import_mapping(
 #[tauri::command]
 pub async fn save_account_import_mapping(
     mapping: ImportMappingData,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<ImportMappingData, String> {
+    let state = state.context()?;
     debug!("Saving import mapping for account: {}", mapping.account_id);
     state
         .activity_service()
@@ -238,8 +249,9 @@ pub async fn link_account_template(
     account_id: String,
     template_id: String,
     context_kind: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<(), String> {
+    let state = state.context()?;
     debug!("Linking account {} to template {}", account_id, template_id);
     state
         .activity_service()
@@ -250,24 +262,27 @@ pub async fn link_account_template(
 
 #[tauri::command]
 pub async fn list_import_templates(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Vec<ImportTemplateData>, String> {
+    let state = state.context()?;
     Ok(state.activity_service().list_import_templates()?)
 }
 
 #[tauri::command]
 pub async fn get_import_template(
     id: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<ImportTemplateData, String> {
+    let state = state.context()?;
     Ok(state.activity_service().get_import_template(id)?)
 }
 
 #[tauri::command]
 pub async fn save_import_template(
     template: ImportTemplateData,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<ImportTemplateData, String> {
+    let state = state.context()?;
     state
         .activity_service()
         .save_import_template(template)
@@ -278,8 +293,9 @@ pub async fn save_import_template(
 #[tauri::command]
 pub async fn delete_import_template(
     id: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<(), String> {
+    let state = state.context()?;
     state
         .activity_service()
         .delete_import_template(id)
@@ -290,8 +306,9 @@ pub async fn delete_import_template(
 #[tauri::command]
 pub async fn check_activities_import(
     activities: Vec<ActivityImport>,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Vec<ActivityImport>, String> {
+    let state = state.context()?;
     debug!("Checking activities import for {} rows", activities.len());
     let result = state
         .activity_service()
@@ -303,8 +320,9 @@ pub async fn check_activities_import(
 #[tauri::command]
 pub async fn preview_import_assets(
     candidates: Vec<ImportAssetCandidate>,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Vec<ImportAssetPreviewItem>, String> {
+    let state = state.context()?;
     let result = state
         .activity_service()
         .preview_import_assets(candidates)
@@ -315,8 +333,9 @@ pub async fn preview_import_assets(
 #[tauri::command]
 pub async fn import_activities(
     activities: Vec<ActivityImport>,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<ImportActivitiesResult, String> {
+    let state = state.context()?;
     debug!("Importing {} activities", activities.len());
     // Domain events handle recalculation and asset enrichment automatically
     let result = state
@@ -331,8 +350,9 @@ pub async fn import_activities(
 #[tauri::command]
 pub async fn check_existing_duplicates(
     idempotency_keys: Vec<String>,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<HashMap<String, String>, String> {
+    let state = state.context()?;
     debug!(
         "Checking for existing duplicates with {} idempotency keys",
         idempotency_keys.len()
@@ -347,8 +367,9 @@ pub async fn check_existing_duplicates(
 pub async fn parse_csv(
     content: Vec<u8>,
     config: ParseConfig,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<ParsedCsvResult, String> {
+    let state = state.context()?;
     debug!(
         "Parsing CSV with {} bytes, config: {:?}",
         content.len(),

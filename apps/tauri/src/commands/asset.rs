@@ -1,14 +1,14 @@
-use std::sync::Arc;
+use crate::database::DatabaseRuntime;
 
-use crate::context::ServiceContext;
 use tauri::State;
 use wealthfolio_core::assets::{Asset, AssetProfile, NewAsset, UpdateAssetProfile};
 
 #[tauri::command]
 pub async fn get_asset_profile(
     asset_id: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<AssetProfile, String> {
+    let state = state.context()?;
     state
         .asset_service()
         .get_asset_profile(&asset_id)
@@ -16,7 +16,8 @@ pub async fn get_asset_profile(
 }
 
 #[tauri::command]
-pub async fn get_assets(state: State<'_, Arc<ServiceContext>>) -> Result<Vec<Asset>, String> {
+pub async fn get_assets(state: State<'_, DatabaseRuntime>) -> Result<Vec<Asset>, String> {
+    let state = state.context()?;
     state
         .asset_service()
         .get_assets()
@@ -27,8 +28,9 @@ pub async fn get_assets(state: State<'_, Arc<ServiceContext>>) -> Result<Vec<Ass
 pub async fn update_asset_profile(
     id: String,
     payload: UpdateAssetProfile,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Asset, String> {
+    let state = state.context()?;
     state
         .asset_service()
         .update_asset_profile(&id, payload)
@@ -40,8 +42,9 @@ pub async fn update_asset_profile(
 pub async fn update_quote_mode(
     id: String,
     quote_mode: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Asset, String> {
+    let state = state.context()?;
     state
         .asset_service()
         .update_quote_mode(&id, &quote_mode)
@@ -52,8 +55,9 @@ pub async fn update_quote_mode(
 #[tauri::command]
 pub async fn create_asset(
     payload: NewAsset,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Asset, String> {
+    let state = state.context()?;
     state
         .asset_service()
         .create_asset(payload)
@@ -62,7 +66,8 @@ pub async fn create_asset(
 }
 
 #[tauri::command]
-pub async fn delete_asset(id: String, state: State<'_, Arc<ServiceContext>>) -> Result<(), String> {
+pub async fn delete_asset(id: String, state: State<'_, DatabaseRuntime>) -> Result<(), String> {
+    let state = state.context()?;
     // Domain events handle quote sync state cleanup automatically
     state
         .asset_service()

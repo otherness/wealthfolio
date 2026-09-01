@@ -1,3 +1,4 @@
+use crate::database::DatabaseRuntime;
 use std::sync::Arc;
 
 use crate::context::ServiceContext;
@@ -14,8 +15,9 @@ use wealthfolio_core::quotes::{MarketSyncMode, SyncMode};
 #[tauri::command]
 pub async fn get_health_status(
     client_timezone: Option<String>,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<HealthStatus, String> {
+    let state = state.context()?;
     debug!("Getting health status...");
 
     let health_service = state.health_service();
@@ -36,8 +38,9 @@ pub async fn get_health_status(
 #[tauri::command]
 pub async fn run_health_checks(
     client_timezone: Option<String>,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<HealthStatus, String> {
+    let state = state.context()?;
     debug!("Running health checks...");
     let base_currency = state.get_base_currency();
     run_health_checks_internal(&state, &base_currency, client_timezone.as_deref()).await
@@ -45,7 +48,7 @@ pub async fn run_health_checks(
 
 /// Internal function to run health checks.
 async fn run_health_checks_internal(
-    state: &State<'_, Arc<ServiceContext>>,
+    state: &Arc<ServiceContext>,
     base_currency: &str,
     client_timezone: Option<&str>,
 ) -> Result<HealthStatus, String> {
@@ -75,8 +78,9 @@ async fn run_health_checks_internal(
 pub async fn dismiss_health_issue(
     issue_id: String,
     data_hash: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<(), String> {
+    let state = state.context()?;
     debug!("Dismissing health issue: {}", issue_id);
     state
         .health_service()
@@ -89,8 +93,9 @@ pub async fn dismiss_health_issue(
 #[tauri::command]
 pub async fn restore_health_issue(
     issue_id: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<(), String> {
+    let state = state.context()?;
     debug!("Restoring health issue: {}", issue_id);
     state
         .health_service()
@@ -102,8 +107,9 @@ pub async fn restore_health_issue(
 /// Get list of dismissed issue IDs.
 #[tauri::command]
 pub async fn get_dismissed_health_issues(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Vec<String>, String> {
+    let state = state.context()?;
     debug!("Getting dismissed health issues...");
     state
         .health_service()
@@ -117,8 +123,9 @@ pub async fn get_dismissed_health_issues(
 pub async fn execute_health_fix(
     action: FixAction,
     app_handle: AppHandle,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<(), String> {
+    let state = state.context()?;
     debug!("Executing health fix: {} ({})", action.label, action.id);
 
     // Handle migrate_legacy_classifications action specially since it needs taxonomy service
@@ -221,9 +228,8 @@ pub async fn execute_health_fix(
 
 /// Get health configuration.
 #[tauri::command]
-pub async fn get_health_config(
-    state: State<'_, Arc<ServiceContext>>,
-) -> Result<HealthConfig, String> {
+pub async fn get_health_config(state: State<'_, DatabaseRuntime>) -> Result<HealthConfig, String> {
+    let state = state.context()?;
     debug!("Getting health config...");
     Ok(state.health_service().get_config().await)
 }
@@ -232,8 +238,9 @@ pub async fn get_health_config(
 #[tauri::command]
 pub async fn update_health_config(
     config: HealthConfig,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<(), String> {
+    let state = state.context()?;
     debug!("Updating health config...");
     state
         .health_service()

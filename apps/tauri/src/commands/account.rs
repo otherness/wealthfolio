@@ -1,6 +1,5 @@
-use std::sync::Arc;
+use crate::database::DatabaseRuntime;
 
-use crate::context::ServiceContext;
 use log::{debug, error};
 use tauri::State;
 
@@ -9,8 +8,9 @@ use wealthfolio_core::accounts::{Account, AccountUpdate, NewAccount};
 #[tauri::command]
 pub async fn get_accounts(
     include_archived: Option<bool>,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Vec<Account>, String> {
+    let state = state.context()?;
     debug!("Fetching accounts...");
     let include = include_archived.unwrap_or(false);
     if include {
@@ -29,8 +29,9 @@ pub async fn get_accounts(
 #[tauri::command]
 pub async fn create_account(
     account: NewAccount,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Account, String> {
+    let state = state.context()?;
     debug!("Adding new account...");
     // Domain events handle recalculation automatically
     state
@@ -46,8 +47,9 @@ pub async fn create_account(
 #[tauri::command]
 pub async fn update_account(
     account_update: AccountUpdate,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Account, String> {
+    let state = state.context()?;
     debug!("Updating account {:?}...", account_update.id);
 
     // Domain events handle recalculation automatically
@@ -61,8 +63,9 @@ pub async fn update_account(
 #[tauri::command]
 pub async fn delete_account(
     account_id: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<(), String> {
+    let state = state.context()?;
     debug!("Deleting account {}...", account_id);
     // Domain events handle recalculation automatically
     state

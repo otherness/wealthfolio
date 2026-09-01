@@ -1,5 +1,6 @@
 //! Commands for syncing broker data from the cloud API.
 
+use crate::database::DatabaseRuntime;
 use log::{debug, error, info};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, State};
@@ -84,8 +85,9 @@ impl SyncProgressReporter for TauriProgressReporter {
 #[tauri::command]
 pub async fn sync_broker_data(
     app: AppHandle,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<(), String> {
+    let state = state.context()?;
     // Check plan entitlement before starting sync
     match state.connect_service().has_broker_sync().await {
         Ok(true) => {}
@@ -98,7 +100,7 @@ pub async fn sync_broker_data(
         }
     }
 
-    let Some(guard) = try_acquire_broker_sync_guard(state.inner().as_ref()) else {
+    let Some(guard) = try_acquire_broker_sync_guard(state.as_ref()) else {
         info!("[Connect] Broker sync skipped: sync already running");
         return Err("Broker sync already running".to_string());
     };
@@ -106,7 +108,7 @@ pub async fn sync_broker_data(
     info!("[Connect] Starting broker data sync ...");
 
     // Clone what we need for the spawned task
-    let context = state.inner().clone();
+    let context = state.clone();
     let app_handle = app.clone();
 
     // Spawn background task
@@ -130,7 +132,7 @@ pub async fn sync_broker_data(
 #[tauri::command]
 pub async fn broker_ingest_run(
     app: AppHandle,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<(), String> {
     sync_broker_data(app, state).await
 }
@@ -192,8 +194,9 @@ pub(crate) async fn perform_broker_sync_with_guard(
 /// Get all synced accounts
 #[tauri::command]
 pub async fn get_synced_accounts(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Vec<wealthfolio_core::accounts::Account>, String> {
+    let state = state.context()?;
     state
         .sync_service()
         .get_synced_accounts()
@@ -202,7 +205,8 @@ pub async fn get_synced_accounts(
 
 /// Get all platforms
 #[tauri::command]
-pub async fn get_platforms(state: State<'_, Arc<ServiceContext>>) -> Result<Vec<Platform>, String> {
+pub async fn get_platforms(state: State<'_, DatabaseRuntime>) -> Result<Vec<Platform>, String> {
+    let state = state.context()?;
     state
         .sync_service()
         .get_platforms()
@@ -216,8 +220,9 @@ pub async fn get_platforms(state: State<'_, Arc<ServiceContext>>) -> Result<Vec<
 /// List broker connections from the cloud API
 #[tauri::command]
 pub async fn list_broker_connections(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Vec<BrokerConnection>, String> {
+    let state = state.context()?;
     debug!("Fetching broker connections from cloud API...");
 
     let client = state.connect_service().get_api_client().await?;
@@ -230,8 +235,9 @@ pub async fn list_broker_connections(
 /// Returns the live account data including sync_enabled and owner info
 #[tauri::command]
 pub async fn list_broker_accounts(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Vec<BrokerAccount>, String> {
+    let state = state.context()?;
     debug!("Fetching broker accounts from cloud API...");
 
     let client = state.connect_service().get_api_client().await?;
@@ -250,8 +256,9 @@ pub async fn list_broker_accounts(
 /// Get subscription plans from the cloud API (requires authentication)
 #[tauri::command]
 pub async fn get_subscription_plans(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<PlansResponse, String> {
+    let state = state.context()?;
     debug!("Fetching subscription plans from cloud API...");
 
     let client = state.connect_service().get_api_client().await?;
@@ -287,7 +294,8 @@ pub async fn get_subscription_plans_public() -> Result<PlansResponse, String> {
 
 /// Get current user info from the cloud API
 #[tauri::command]
-pub async fn get_user_info(state: State<'_, Arc<ServiceContext>>) -> Result<UserInfo, String> {
+pub async fn get_user_info(state: State<'_, DatabaseRuntime>) -> Result<UserInfo, String> {
+    let state = state.context()?;
     debug!("Fetching user info from cloud API...");
 
     let client = state.connect_service().get_api_client().await?;
@@ -307,8 +315,9 @@ pub async fn get_user_info(state: State<'_, Arc<ServiceContext>>) -> Result<User
 /// Get all broker sync states
 #[tauri::command]
 pub async fn get_broker_sync_states(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Vec<wealthfolio_connect::BrokerSyncState>, String> {
+    let state = state.context()?;
     debug!("Fetching all broker sync states...");
     state
         .sync_service()
@@ -319,7 +328,7 @@ pub async fn get_broker_sync_states(
 /// Alias for `get_broker_sync_states` using explicit broker-ingest vocabulary.
 #[tauri::command]
 pub async fn get_broker_ingest_states(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Vec<wealthfolio_connect::BrokerSyncState>, String> {
     get_broker_sync_states(state).await
 }
@@ -330,8 +339,9 @@ pub async fn get_import_runs(
     run_type: Option<String>,
     limit: Option<i64>,
     offset: Option<i64>,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Vec<wealthfolio_connect::ImportRun>, String> {
+    let state = state.context()?;
     let limit = limit.unwrap_or(50);
     let offset = offset.unwrap_or(0);
     debug!(
@@ -351,7 +361,7 @@ pub async fn get_data_import_runs(
     run_type: Option<String>,
     limit: Option<i64>,
     offset: Option<i64>,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Vec<wealthfolio_connect::ImportRun>, String> {
     get_import_runs(run_type, limit, offset, state).await
 }
@@ -365,8 +375,9 @@ pub async fn get_data_import_runs(
 pub async fn get_broker_sync_profile(
     account_id: String,
     source_system: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<wealthfolio_core::activities::BrokerSyncProfileData, String> {
+    let state = state.context()?;
     log::debug!(
         "Getting broker sync profile for account: {}, source: {}",
         account_id,
@@ -382,8 +393,9 @@ pub async fn get_broker_sync_profile(
 #[tauri::command]
 pub async fn save_broker_sync_profile_rules(
     request: wealthfolio_core::activities::SaveBrokerSyncProfileRulesRequest,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<wealthfolio_core::activities::BrokerSyncProfileData, String> {
+    let state = state.context()?;
     log::debug!(
         "Saving broker sync profile rules for account: {}, source: {}",
         request.account_id,

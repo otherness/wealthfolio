@@ -1289,8 +1289,11 @@ pub async fn sync_bootstrap_snapshot_if_needed(
     }
 
     let sqlite_image = decode_snapshot_sqlite_payload(blob, &identity)?;
-    let temp_snapshot_path =
-        std::env::temp_dir().join(format!("wf_snapshot_server_{}.db", Uuid::new_v4()));
+    // App-private storage, not the shared system temp directory: the snapshot
+    // image is a plaintext copy of synced financial rows.
+    let scratch_dir = wealthfolio_storage_sqlite::db::scratch_dir(&state.data_root)
+        .map_err(|e| format!("Failed to prepare the snapshot scratch directory: {}", e))?;
+    let temp_snapshot_path = scratch_dir.join(format!("wf_snapshot_server_{}.db", Uuid::new_v4()));
     std::fs::write(&temp_snapshot_path, sqlite_image)
         .map_err(|e| format!("Failed to persist snapshot image: {}", e))?;
     let snapshot_path_str = temp_snapshot_path.to_string_lossy().to_string();

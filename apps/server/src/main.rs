@@ -36,6 +36,36 @@ fn is_expected_startup_token_warmup_error(err: &crate::error::ApiError) -> bool 
     }
 }
 
+#[cfg(test)]
+mod cli_tests {
+    use super::run_maintenance_cli;
+
+    fn args(values: &[&str]) -> Vec<String> {
+        values.iter().map(|value| value.to_string()).collect()
+    }
+
+    #[test]
+    fn non_db_arguments_fall_through_to_normal_startup() {
+        assert!(run_maintenance_cli(&args(&[])).is_none());
+        assert!(run_maintenance_cli(&args(&["--version"])).is_none());
+    }
+
+    #[test]
+    fn db_without_a_subcommand_is_an_error_not_a_server_start() {
+        let result = run_maintenance_cli(&args(&["db"])).expect("must not fall through");
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Missing database command"));
+    }
+
+    #[test]
+    fn db_with_an_unknown_subcommand_is_an_error() {
+        let result = run_maintenance_cli(&args(&["db", "rotate"])).expect("must not fall through");
+        assert!(result.unwrap_err().to_string().contains("db rotate"));
+    }
+}
+
 #[cfg(all(test, feature = "device-sync"))]
 mod tests {
     use super::*;
@@ -62,8 +92,43 @@ mod tests {
     }
 }
 
+/// Offline database maintenance, run with the server stopped.
+///
+/// Converting the database replaces the file, which requires that nothing is
+/// connected to it — so it is a command, not an API call.
+fn run_maintenance_cli(args: &[String]) -> Option<anyhow::Result<()>> {
+    if args.first().map(String::as_str) != Some("db") {
+        return None;
+    }
+
+    // Once `db` is given, a missing or unknown subcommand is an error. Falling
+    // through would silently start the server instead of converting anything.
+    let encrypt = match args.get(1).map(String::as_str) {
+        Some("encrypt") => true,
+        Some("decrypt") => false,
+        Some(other) => {
+            return Some(Err(anyhow::anyhow!(
+                "Unknown database command 'db {other}'. Expected 'db encrypt' or 'db decrypt'."
+            )))
+        }
+        None => {
+            return Some(Err(anyhow::anyhow!(
+                "Missing database command. Expected 'db encrypt' or 'db decrypt'."
+            )))
+        }
+    };
+
+    init_tracing();
+    Some(main_lib::run_database_maintenance(encrypt))
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if let Some(result) = run_maintenance_cli(&args) {
+        return result;
+    }
+
     let config = Config::from_env();
     init_tracing();
     let state = build_state(&config).await?;

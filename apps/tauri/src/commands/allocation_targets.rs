@@ -1,3 +1,4 @@
+use crate::database::DatabaseRuntime;
 use std::sync::Arc;
 
 use tauri::State;
@@ -46,8 +47,9 @@ fn account_scope_for_target(target: &AllocationTarget) -> Result<AccountScope, S
 
 #[tauri::command]
 pub async fn list_allocation_targets(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Vec<AllocationTarget>, String> {
+    let state = state.context()?;
     state
         .allocation_target_service()
         .list_targets()
@@ -56,9 +58,10 @@ pub async fn list_allocation_targets(
 
 #[tauri::command]
 pub async fn get_allocation_target(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     id: String,
 ) -> Result<Option<AllocationTarget>, String> {
+    let state = state.context()?;
     state
         .allocation_target_service()
         .get_target(&id)
@@ -67,9 +70,10 @@ pub async fn get_allocation_target(
 
 #[tauri::command]
 pub async fn create_allocation_target(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     input: NewAllocationTarget,
 ) -> Result<AllocationTarget, String> {
+    let state = state.context()?;
     state
         .allocation_target_service()
         .create_target(input)
@@ -79,10 +83,11 @@ pub async fn create_allocation_target(
 
 #[tauri::command]
 pub async fn update_allocation_target(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     id: String,
     input: NewAllocationTarget,
 ) -> Result<AllocationTarget, String> {
+    let state = state.context()?;
     state
         .allocation_target_service()
         .update_target(&id, input)
@@ -92,9 +97,10 @@ pub async fn update_allocation_target(
 
 #[tauri::command]
 pub async fn archive_allocation_target(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     id: String,
 ) -> Result<AllocationTarget, String> {
+    let state = state.context()?;
     state
         .allocation_target_service()
         .archive_target(&id)
@@ -104,9 +110,10 @@ pub async fn archive_allocation_target(
 
 #[tauri::command]
 pub async fn delete_allocation_target(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     id: String,
 ) -> Result<(), String> {
+    let state = state.context()?;
     state
         .allocation_target_service()
         .delete_target(&id)
@@ -118,9 +125,10 @@ pub async fn delete_allocation_target(
 
 #[tauri::command]
 pub async fn list_allocation_target_weights(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     target_id: String,
 ) -> Result<Vec<AllocationTargetWeight>, String> {
+    let state = state.context()?;
     state
         .allocation_target_service()
         .list_weights_for_target(&target_id)
@@ -129,10 +137,11 @@ pub async fn list_allocation_target_weights(
 
 #[tauri::command]
 pub async fn save_allocation_target_weights(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     target_id: String,
     weights: Vec<NewAllocationTargetWeight>,
 ) -> Result<Vec<AllocationTargetWeight>, String> {
+    let state = state.context()?;
     state
         .allocation_target_service()
         .save_weights(&target_id, weights)
@@ -142,11 +151,12 @@ pub async fn save_allocation_target_weights(
 
 #[tauri::command]
 pub async fn save_allocation_target_with_weights(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     id: Option<String>,
     input: NewAllocationTarget,
     weights: Vec<NewAllocationTargetWeight>,
 ) -> Result<SaveAllocationTargetResult, String> {
+    let state = state.context()?;
     state
         .allocation_target_service()
         .save_target_with_weights(id, input, weights)
@@ -158,9 +168,10 @@ pub async fn save_allocation_target_with_weights(
 
 #[tauri::command]
 pub async fn list_target_constraints(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     target_id: String,
 ) -> Result<Vec<AllocationTargetConstraint>, String> {
+    let state = state.context()?;
     state
         .allocation_target_service()
         .list_target_constraints(&target_id)
@@ -169,10 +180,11 @@ pub async fn list_target_constraints(
 
 #[tauri::command]
 pub async fn save_target_constraints(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     target_id: String,
     constraints: Vec<AllocationTargetConstraint>,
 ) -> Result<Vec<AllocationTargetConstraint>, String> {
+    let state = state.context()?;
     state
         .allocation_target_service()
         .save_target_constraints(&target_id, constraints)
@@ -184,11 +196,12 @@ pub async fn save_target_constraints(
 
 #[tauri::command]
 pub async fn get_allocation_target_drift(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     target_id: String,
     filter: AccountScopeInput,
     include_holdings: Option<bool>,
 ) -> Result<DriftReport, String> {
+    let state = state.context()?;
     let _ = filter;
     let base_currency = state.get_base_currency();
     let target = state
@@ -265,13 +278,14 @@ fn resolve_rebalance_input(
 
 #[tauri::command]
 pub async fn calculate_rebalance_plan(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     target_id: String,
     available_cash: Decimal,
     scenario_mode: Option<ScenarioMode>,
     filter: AccountScopeInput,
     eligible_asset_ids: Option<Vec<String>>,
 ) -> Result<RebalancePlan, String> {
+    let state = state.context()?;
     let input = resolve_rebalance_input(
         &state,
         target_id,

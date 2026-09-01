@@ -441,10 +441,12 @@ export {
   installUpdate,
   isAutoUpdateCheckEnabled,
   listDatabaseBackups,
+  getDatabaseEncryptionStatus,
+  setDatabaseEncryptionEnabled,
   restoreDatabase,
   updateSettings,
 } from "./settings";
-export type { DatabaseBackup } from "./settings";
+export type { DatabaseBackup, DatabaseEncryptionStatus } from "./settings";
 
 // Addon Commands (web-specific implementations)
 export {

@@ -1,3 +1,4 @@
+use crate::database::DatabaseRuntime;
 use std::sync::Arc;
 
 use rust_decimal::prelude::ToPrimitive;
@@ -47,7 +48,7 @@ mod tests {
 }
 
 async fn build_valuation_map(
-    state: &State<'_, Arc<ServiceContext>>,
+    state: &Arc<ServiceContext>,
 ) -> Result<std::collections::HashMap<String, f64>, String> {
     let accounts = state
         .account_service()
@@ -92,7 +93,7 @@ async fn build_valuation_map(
 }
 
 async fn resolve_retirement_inputs(
-    state: &State<'_, Arc<ServiceContext>>,
+    state: &Arc<ServiceContext>,
     goal_id: &Option<String>,
     planner_mode: Option<RetirementTimingMode>,
     plan: RetirementPlan,
@@ -139,8 +140,9 @@ pub async fn calculate_retirement_projection(
     current_portfolio: f64,
     goal_id: Option<String>,
     planner_mode: Option<RetirementTimingMode>,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<FireProjection, String> {
+    let state = state.context()?;
     let (plan, current_portfolio, planner_mode) =
         resolve_retirement_inputs(&state, &goal_id, planner_mode, plan, current_portfolio).await?;
     Ok(project_retirement_with_mode(
@@ -158,8 +160,9 @@ pub async fn run_retirement_monte_carlo(
     seed: Option<u64>,
     goal_id: Option<String>,
     planner_mode: Option<RetirementTimingMode>,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<MonteCarloResult, String> {
+    let state = state.context()?;
     let n = normalize_sim_count(n_sims);
     let (plan, current_portfolio, planner_mode) =
         resolve_retirement_inputs(&state, &goal_id, planner_mode, plan, current_portfolio).await?;
@@ -175,8 +178,9 @@ pub async fn run_retirement_stress_tests(
     current_portfolio: f64,
     goal_id: Option<String>,
     planner_mode: Option<RetirementTimingMode>,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Vec<StressTestResult>, String> {
+    let state = state.context()?;
     let (plan, current_portfolio, planner_mode) =
         resolve_retirement_inputs(&state, &goal_id, planner_mode, plan, current_portfolio).await?;
     run_retirement_blocking(move || {
@@ -191,8 +195,9 @@ pub async fn run_retirement_scenario_analysis(
     current_portfolio: f64,
     goal_id: Option<String>,
     planner_mode: Option<RetirementTimingMode>,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Vec<ScenarioResult>, String> {
+    let state = state.context()?;
     let (plan, current_portfolio, planner_mode) =
         resolve_retirement_inputs(&state, &goal_id, planner_mode, plan, current_portfolio).await?;
     run_retirement_blocking(move || {
@@ -207,8 +212,9 @@ pub async fn run_retirement_sorr(
     portfolio_at_fire: f64,
     retirement_start_age: u32,
     goal_id: Option<String>,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Vec<SorrScenario>, String> {
+    let state = state.context()?;
     let plan = if let Some(goal_id) = &goal_id {
         let valuation_map = build_valuation_map(&state).await?;
         state
@@ -230,8 +236,9 @@ pub async fn run_retirement_decision_sensitivity_map(
     map: DecisionSensitivityMap,
     goal_id: Option<String>,
     planner_mode: Option<RetirementTimingMode>,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<DecisionSensitivityMatrix, String> {
+    let state = state.context()?;
     let (plan, current_portfolio, planner_mode) =
         resolve_retirement_inputs(&state, &goal_id, planner_mode, plan, current_portfolio).await?;
     run_retirement_blocking(move || {

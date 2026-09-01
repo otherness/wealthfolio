@@ -1,11 +1,8 @@
+use crate::database::DatabaseRuntime;
 use std::collections::HashMap;
-use std::sync::Arc;
 
-use crate::{
-    context::ServiceContext,
-    events::{
-        emit_portfolio_trigger_recalculate, emit_portfolio_trigger_update, PortfolioRequestPayload,
-    },
+use crate::events::{
+    emit_portfolio_trigger_recalculate, emit_portfolio_trigger_update, PortfolioRequestPayload,
 };
 
 use log::{debug, error, warn};
@@ -19,8 +16,9 @@ use wealthfolio_market_data::{DividendEvent, ExchangeInfo};
 #[tauri::command]
 pub async fn search_symbol(
     query: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Vec<SymbolSearchResult>, String> {
+    let state = state.context()?;
     state
         .quote_service()
         .search_symbol(&query)
@@ -56,7 +54,8 @@ pub async fn sync_market_data(
 }
 
 #[tauri::command]
-pub async fn synch_quotes(state: State<'_, Arc<ServiceContext>>) -> Result<(), String> {
+pub async fn synch_quotes(state: State<'_, DatabaseRuntime>) -> Result<(), String> {
+    let state = state.context()?;
     let result = state
         .quote_service()
         .resync(None)
@@ -71,9 +70,10 @@ pub async fn synch_quotes(state: State<'_, Arc<ServiceContext>>) -> Result<(), S
 #[tauri::command]
 pub async fn update_quote(
     quote: Quote,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     handle: AppHandle,
 ) -> Result<(), String> {
+    let state = state.context()?;
     debug!("Updating quote: {:?}", quote);
     state
         .quote_service()
@@ -98,9 +98,10 @@ pub async fn update_quote(
 #[tauri::command]
 pub async fn delete_quote(
     id: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     handle: AppHandle,
 ) -> Result<(), String> {
+    let state = state.context()?;
     debug!("Deleting quote: {}", id);
     state
         .quote_service()
@@ -124,8 +125,9 @@ pub async fn delete_quote(
 #[tauri::command]
 pub async fn get_quote_history(
     symbol: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Vec<Quote>, String> {
+    let state = state.context()?;
     debug!("Fetching quote history for symbol: {}", symbol);
     state
         .quote_service()
@@ -136,8 +138,9 @@ pub async fn get_quote_history(
 #[tauri::command]
 pub async fn get_latest_quotes(
     asset_ids: Vec<String>,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<HashMap<String, LatestQuoteSnapshot>, String> {
+    let state = state.context()?;
     state
         .quote_service()
         .get_latest_quotes_snapshot(&asset_ids)
@@ -146,8 +149,9 @@ pub async fn get_latest_quotes(
 
 #[tauri::command]
 pub async fn get_market_data_providers(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Vec<ProviderInfo>, String> {
+    let state = state.context()?;
     debug!("Received request to get market data providers");
     state
         .quote_service()
@@ -163,8 +167,9 @@ pub async fn get_market_data_providers(
 pub async fn check_quotes_import(
     content: Vec<u8>,
     has_header_row: bool,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Vec<QuoteImport>, String> {
+    let state = state.context()?;
     debug!(
         "Checking quotes import from {} bytes CSV (has_header={})",
         content.len(),
@@ -184,9 +189,10 @@ pub async fn check_quotes_import(
 pub async fn import_quotes_csv(
     quotes: Vec<QuoteImport>,
     overwrite_existing: bool,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     handle: AppHandle,
 ) -> Result<Vec<QuoteImport>, String> {
+    let state = state.context()?;
     debug!(
         "Importing {} quotes from CSV (overwrite_existing={})",
         quotes.len(),
@@ -222,8 +228,9 @@ pub async fn resolve_symbol_quote(
     instrument_type: Option<String>,
     quote_ccy: Option<String>,
     provider_id: Option<String>,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<wealthfolio_core::quotes::ResolvedQuote, String> {
+    let state = state.context()?;
     let inst_type = instrument_type
         .as_deref()
         .and_then(wealthfolio_core::assets::InstrumentType::from_external_str);
@@ -256,8 +263,9 @@ pub async fn fetch_dividends(
     provider_id: Option<String>,
     start_date: Option<String>,
     end_date: Option<String>,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Vec<DividendEvent>, String> {
+    let state = state.context()?;
     let inst_type = instrument_type
         .as_deref()
         .and_then(wealthfolio_core::assets::InstrumentType::from_external_str);

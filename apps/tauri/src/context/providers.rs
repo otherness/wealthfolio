@@ -44,7 +44,7 @@ use wealthfolio_storage_sqlite::{
     agent::{McpAuditRepository, PatRepository},
     ai_chat::AiChatRepository,
     assets::{AlternativeAssetRepository, AssetRepository},
-    db::{self, write_actor},
+    db::{self, write_actor, WriteHandle, WriterTask},
     fx::FxRepository,
     goals::GoalRepository,
     health::HealthDismissalRepository,
@@ -65,17 +65,26 @@ pub struct ContextInitResult {
     pub context: ServiceContext,
     pub event_receiver: mpsc::UnboundedReceiver<DomainEvent>,
     pub sync_outbox_wake_receiver: mpsc::Receiver<()>,
+    /// Handed to the database runtime so maintenance can stop the writer and
+    /// wait for its pooled connection to be released.
+    pub writer: WriteHandle,
+    pub writer_task: WriterTask,
 }
 
+/// Builds every repository and service over an already-resolved database.
+///
+/// `access` carries the path and, when the database is encrypted, the key — so
+/// that `PRAGMA key` is applied at every connection site, including the pool the
+/// write actor draws from.
 pub async fn initialize_context(
     app_data_dir: &str,
+    access: &db::DbAccess,
 ) -> Result<ContextInitResult, Box<dyn std::error::Error>> {
-    let db_path = db::init(app_data_dir)?;
-    db::run_migrations(&db_path)?;
+    access.run_migrations()?;
 
-    let pool = db::create_pool(&db_path)?;
+    let pool = access.create_pool()?;
     let (sync_outbox_wake_sender, sync_outbox_wake_receiver) = mpsc::channel(128);
-    let writer = write_actor::spawn_writer_with_outbox_observer(
+    let (writer, writer_task) = write_actor::spawn_writer_with_outbox_observer(
         pool.as_ref().clone(),
         Arc::new(move || {
             let _ = sync_outbox_wake_sender.try_send(());
@@ -696,6 +705,8 @@ pub async fn initialize_context(
         },
         event_receiver,
         sync_outbox_wake_receiver,
+        writer,
+        writer_task,
     })
 }
 

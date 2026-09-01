@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use crate::database::DatabaseRuntime;
 
 use crate::context::ServiceContext;
 use log::debug;
@@ -49,8 +49,9 @@ fn validate_contribution_limit_accounts(
 
 #[tauri::command]
 pub async fn get_contribution_limits(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Vec<ContributionLimit>, String> {
+    let state = state.context()?;
     debug!("Fetching contribution limits...");
     state
         .limits_service()
@@ -61,8 +62,9 @@ pub async fn get_contribution_limits(
 #[tauri::command]
 pub async fn create_contribution_limit(
     new_limit: NewContributionLimit,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<ContributionLimit, String> {
+    let state = state.context()?;
     debug!("Creating new contribution limit...");
     validate_contribution_limit_accounts(&state, &new_limit)?;
     state
@@ -76,8 +78,9 @@ pub async fn create_contribution_limit(
 pub async fn update_contribution_limit(
     id: String,
     updated_limit: NewContributionLimit,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<ContributionLimit, String> {
+    let state = state.context()?;
     debug!("Updating contribution limit...");
     validate_contribution_limit_accounts(&state, &updated_limit)?;
     state
@@ -90,8 +93,9 @@ pub async fn update_contribution_limit(
 #[tauri::command]
 pub async fn delete_contribution_limit(
     id: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<(), String> {
+    let state = state.context()?;
     debug!("Deleting contribution limit...");
     state
         .limits_service()
@@ -103,8 +107,9 @@ pub async fn delete_contribution_limit(
 #[tauri::command]
 pub async fn calculate_deposits_for_contribution_limit(
     limit_id: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<DepositsCalculation, String> {
+    let state = state.context()?;
     debug!("Calculating deposits for contribution limit...");
     let base_currency = state.base_currency.read().unwrap();
     state

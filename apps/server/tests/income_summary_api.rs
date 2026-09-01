@@ -18,6 +18,8 @@ fn test_config(db_path: String, addons_root: String) -> Config {
         addons_root,
         raw_secret_key: vec![7; 32],
         secrets_encryption_key: [7; 32],
+        database_key: [9; 32],
+        db_encryption_required: false,
         auth: None,
         oidc: None,
         mcp_enabled: false,

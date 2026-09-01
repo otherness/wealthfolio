@@ -6,6 +6,7 @@
 mod engine;
 mod snapshot;
 
+use crate::database::DatabaseRuntime;
 use async_trait::async_trait;
 use log::{debug, info, warn};
 use std::collections::HashMap;
@@ -670,11 +671,12 @@ fn get_app_version() -> Option<String> {
 pub async fn enroll_device(
     device_nonce: String,
     display_name: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<EnrollDeviceResponse, String> {
+    let state = state.context()?;
     info!("[DeviceSync] Enrolling device: {}", display_name);
 
-    let token = get_access_token(state.inner()).await?;
+    let token = get_access_token(&state).await?;
     let client = create_client()?;
 
     let platform = DevicePlatform::detect().to_string();
@@ -720,9 +722,10 @@ pub async fn enroll_device(
 #[tauri::command(rename_all = "camelCase")]
 pub async fn get_device(
     device_id: Option<String>,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Device, String> {
-    let token = get_access_token(state.inner()).await?;
+    let state = state.context()?;
+    let token = get_access_token(&state).await?;
     let device_id = device_id
         .or_else(get_device_id_from_store)
         .ok_or_else(|| "No device ID configured".to_string())?;
@@ -736,11 +739,12 @@ pub async fn get_device(
 #[tauri::command]
 pub async fn list_devices(
     scope: Option<String>,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Vec<Device>, String> {
+    let state = state.context()?;
     info!("[DeviceSync] Listing devices (scope: {:?})...", scope);
 
-    let token = get_access_token(state.inner()).await?;
+    let token = get_access_token(&state).await?;
 
     let devices = create_client()?
         .list_devices(&token, scope.as_deref())
@@ -755,14 +759,15 @@ pub async fn list_devices(
 pub async fn update_device(
     device_id: String,
     display_name: Option<String>,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<SuccessResponse, String> {
+    let state = state.context()?;
     info!(
         "[DeviceSync] Updating device {}: name={:?}",
         device_id, display_name
     );
 
-    let token = get_access_token(state.inner()).await?;
+    let token = get_access_token(&state).await?;
 
     create_client()?
         .update_device(
@@ -780,11 +785,12 @@ pub async fn update_device(
 #[tauri::command(rename_all = "camelCase")]
 pub async fn delete_device(
     device_id: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<SuccessResponse, String> {
+    let state = state.context()?;
     info!("[DeviceSync] Deleting device: {}", device_id);
 
-    let token = get_access_token(state.inner()).await?;
+    let token = get_access_token(&state).await?;
 
     create_client()?
         .delete_device(&token, &device_id)
@@ -795,11 +801,12 @@ pub async fn delete_device(
 #[tauri::command(rename_all = "camelCase")]
 pub async fn revoke_device(
     device_id: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<SuccessResponse, String> {
+    let state = state.context()?;
     info!("[DeviceSync] Revoking device: {}", device_id);
 
-    let token = get_access_token(state.inner()).await?;
+    let token = get_access_token(&state).await?;
 
     create_client()?
         .revoke_device(&token, &device_id)
@@ -813,11 +820,12 @@ pub async fn revoke_device(
 
 #[tauri::command]
 pub async fn initialize_team_keys(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<InitializeKeysResult, String> {
+    let state = state.context()?;
     info!("[DeviceSync] Initializing team keys...");
 
-    let token = get_access_token(state.inner()).await?;
+    let token = get_access_token(&state).await?;
     let device_id =
         get_device_id_from_store().ok_or_else(|| "No device ID configured".to_string())?;
 
@@ -845,11 +853,12 @@ pub async fn commit_initialize_team_keys(
     signature: String,
     challenge_response: Option<String>,
     recovery_envelope: Option<String>,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<CommitInitializeKeysResponse, String> {
+    let state = state.context()?;
     info!("[DeviceSync] Committing team key initialization...");
 
-    let token = get_access_token(state.inner()).await?;
+    let token = get_access_token(&state).await?;
     let device_id =
         get_device_id_from_store().ok_or_else(|| "No device ID configured".to_string())?;
 
@@ -870,11 +879,12 @@ pub async fn commit_initialize_team_keys(
 
 #[tauri::command]
 pub async fn rotate_team_keys(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<RotateKeysResponse, String> {
+    let state = state.context()?;
     info!("[DeviceSync] Starting key rotation...");
 
-    let token = get_access_token(state.inner()).await?;
+    let token = get_access_token(&state).await?;
     let device_id =
         get_device_id_from_store().ok_or_else(|| "No device ID configured".to_string())?;
 
@@ -887,11 +897,12 @@ pub async fn rotate_team_keys(
 #[tauri::command]
 pub async fn commit_rotate_team_keys(
     request: CommitRotateKeysRequest,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<CommitRotateKeysResponse, String> {
+    let state = state.context()?;
     info!("[DeviceSync] Committing key rotation...");
 
-    let token = get_access_token(state.inner()).await?;
+    let token = get_access_token(&state).await?;
     let device_id =
         get_device_id_from_store().ok_or_else(|| "No device ID configured".to_string())?;
 
@@ -904,11 +915,12 @@ pub async fn commit_rotate_team_keys(
 #[tauri::command]
 pub async fn reset_team_sync(
     reason: Option<String>,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<ResetTeamSyncResponse, String> {
+    let state = state.context()?;
     info!("[DeviceSync] Resetting team sync...");
 
-    let token = get_access_token(state.inner()).await?;
+    let token = get_access_token(&state).await?;
 
     create_client()?
         .reset_team_sync(&token, reason.as_deref())
@@ -921,8 +933,9 @@ pub async fn reset_team_sync(
 // ─────────────────────────────────────────────────────────────────────────────
 
 pub async fn sync_engine_status(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<SyncEngineStatusResult, String> {
+    let state = state.context()?;
     let sync_repo = state.app_sync_repository();
     let status = sync_repo.get_engine_status().map_err(|e| e.to_string())?;
     let bootstrap_required = match get_device_id_from_store() {
@@ -931,7 +944,7 @@ pub async fn sync_engine_status(
             .map_err(|e| e.to_string())?,
         None => true,
     };
-    let runtime = state.inner().device_sync_runtime();
+    let runtime = state.device_sync_runtime();
     let background_running = runtime.is_background_running().await;
 
     Ok(SyncEngineStatusResult {
@@ -950,8 +963,9 @@ pub async fn sync_engine_status(
 
 #[tauri::command]
 pub async fn device_sync_bootstrap_overwrite_check(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<SyncBootstrapOverwriteCheckResult, String> {
+    let state = state.context()?;
     let sync_repo = state.app_sync_repository();
     let device_id = get_device_id_from_store();
     let bootstrap_required = match device_id.as_deref() {
@@ -1005,21 +1019,19 @@ pub async fn device_sync_bootstrap_overwrite_check(
 }
 
 pub async fn sync_trigger_cycle(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<SyncCycleResult, String> {
-    engine::run_sync_cycle(Arc::clone(state.inner()), false).await
+    let state = state.context()?;
+    engine::run_sync_cycle(Arc::clone(&state), false).await
 }
 
 #[tauri::command]
 pub async fn device_sync_start_background_engine(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<SyncBackgroundEngineResult, String> {
-    ensure_background_engine_started(Arc::clone(state.inner())).await?;
-    let background_running = state
-        .inner()
-        .device_sync_runtime()
-        .is_background_running()
-        .await;
+    let state = state.context()?;
+    ensure_background_engine_started(Arc::clone(&state)).await?;
+    let background_running = state.device_sync_runtime().is_background_running().await;
     Ok(SyncBackgroundEngineResult {
         status: if background_running {
             "started".to_string()
@@ -1036,9 +1048,10 @@ pub async fn device_sync_start_background_engine(
 
 #[tauri::command]
 pub async fn device_sync_stop_background_engine(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<SyncBackgroundEngineResult, String> {
-    ensure_background_engine_stopped(Arc::clone(state.inner())).await?;
+    let state = state.context()?;
+    ensure_background_engine_stopped(Arc::clone(&state)).await?;
     Ok(SyncBackgroundEngineResult {
         status: "stopped".to_string(),
         message: "Device sync background engine stopped".to_string(),
@@ -1048,17 +1061,18 @@ pub async fn device_sync_stop_background_engine(
 #[tauri::command]
 pub async fn device_sync_generate_snapshot_now(
     handle: AppHandle,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<SyncSnapshotUploadResult, String> {
-    snapshot::generate_snapshot_now_internal(Some(&handle), Arc::clone(state.inner())).await
+    let state = state.context()?;
+    snapshot::generate_snapshot_now_internal(Some(&handle), Arc::clone(&state)).await
 }
 
 #[tauri::command]
 pub async fn device_sync_cancel_snapshot_upload(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<SyncBackgroundEngineResult, String> {
+    let state = state.context()?;
     state
-        .inner()
         .device_sync_runtime()
         .snapshot_upload_cancelled
         .store(true, Ordering::Relaxed);
@@ -1070,24 +1084,26 @@ pub async fn device_sync_cancel_snapshot_upload(
 
 #[tauri::command]
 pub async fn device_sync_engine_status(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<SyncEngineStatusResult, String> {
     sync_engine_status(state).await
 }
 
 #[tauri::command]
 pub async fn device_sync_pairing_source_status(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<SyncPairingSourceStatusResult, String> {
-    snapshot::get_pairing_source_status_internal(Arc::clone(state.inner())).await
+    let state = state.context()?;
+    snapshot::get_pairing_source_status_internal(Arc::clone(&state)).await
 }
 
 #[tauri::command(rename_all = "camelCase")]
 pub async fn device_sync_reconcile_ready_state(
     allow_overwrite: bool,
     handle: AppHandle,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<SyncReconcileReadyStateResult, String> {
+    let state = state.context()?;
     let device_id = get_device_id_from_store();
     let has_overwrite_approval = device_id
         .as_deref()
@@ -1101,7 +1117,7 @@ pub async fn device_sync_reconcile_ready_state(
 
     let runner = TauriReadyReconcileRunner {
         handle,
-        context: Arc::clone(state.inner()),
+        context: Arc::clone(&state),
     };
     let result = shared_sync_engine::run_ready_reconcile_state(&runner).await;
 
@@ -1121,9 +1137,10 @@ pub async fn device_sync_reconcile_ready_state(
 #[tauri::command]
 pub async fn device_sync_bootstrap_snapshot_if_needed(
     handle: AppHandle,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<SyncBootstrapResult, String> {
-    let context = Arc::clone(state.inner());
+    let state = state.context()?;
+    let context = Arc::clone(&state);
     let result = snapshot::sync_bootstrap_snapshot_if_needed(handle, &context).await?;
     let should_start_engine = match context.connect_service().get_valid_access_token().await {
         Ok(token) => context
@@ -1149,7 +1166,7 @@ pub async fn device_sync_bootstrap_snapshot_if_needed(
 
     // Start the background sync engine whenever this device is READY.
     if should_start_engine {
-        let engine_context = Arc::clone(state.inner());
+        let engine_context = Arc::clone(&state);
         tauri::async_runtime::spawn(async move {
             if let Err(err) = ensure_background_engine_started(engine_context).await {
                 log::warn!("[DeviceSync] Post-bootstrap engine start failed: {}", err);
@@ -1162,7 +1179,7 @@ pub async fn device_sync_bootstrap_snapshot_if_needed(
 
 #[tauri::command]
 pub async fn device_sync_trigger_cycle(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<SyncCycleResult, String> {
     sync_trigger_cycle(state).await
 }
@@ -1175,11 +1192,12 @@ pub async fn device_sync_trigger_cycle(
 pub async fn create_pairing(
     code_hash: String,
     ephemeral_public_key: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<CreatePairingResponse, String> {
+    let state = state.context()?;
     debug!("[DeviceSync] Creating pairing session...");
 
-    let token = get_access_token(state.inner()).await?;
+    let token = get_access_token(&state).await?;
     let device_id =
         get_device_id_from_store().ok_or_else(|| "No device ID configured".to_string())?;
 
@@ -1199,11 +1217,12 @@ pub async fn create_pairing(
 #[tauri::command(rename_all = "camelCase")]
 pub async fn get_pairing(
     pairing_id: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<GetPairingResponse, String> {
+    let state = state.context()?;
     debug!("[DeviceSync] Getting pairing session: {}", pairing_id);
 
-    let token = get_access_token(state.inner()).await?;
+    let token = get_access_token(&state).await?;
     let device_id =
         get_device_id_from_store().ok_or_else(|| "No device ID configured".to_string())?;
 
@@ -1216,11 +1235,12 @@ pub async fn get_pairing(
 #[tauri::command(rename_all = "camelCase")]
 pub async fn approve_pairing(
     pairing_id: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<SuccessResponse, String> {
+    let state = state.context()?;
     debug!("[DeviceSync] Approving pairing session: {}", pairing_id);
 
-    let token = get_access_token(state.inner()).await?;
+    let token = get_access_token(&state).await?;
     let device_id =
         get_device_id_from_store().ok_or_else(|| "No device ID configured".to_string())?;
 
@@ -1239,14 +1259,15 @@ pub async fn complete_pairing(
     encrypted_key_bundle: String,
     sas_proof: serde_json::Value,
     signature: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<CompletePairingResponse, String> {
+    let state = state.context()?;
     debug!("[DeviceSync] Completing pairing session: {}", pairing_id);
 
     // Snapshot upload is now handled by the frontend issuer flow BEFORE calling
     // this command, so complete_pairing only sends the key bundle.
 
-    let token = get_access_token(state.inner()).await?;
+    let token = get_access_token(&state).await?;
     let device_id =
         get_device_id_from_store().ok_or_else(|| "No device ID configured".to_string())?;
 
@@ -1265,7 +1286,7 @@ pub async fn complete_pairing(
         .map_err(|e| e.to_string())?;
 
     // Ensure the background sync engine is running (may be a no-op if already started).
-    let engine_context = Arc::clone(state.inner());
+    let engine_context = Arc::clone(&state);
     tauri::async_runtime::spawn(async move {
         if let Err(err) = ensure_background_engine_started(engine_context).await {
             log::warn!("[DeviceSync] Post-pairing engine start failed: {}", err);
@@ -1278,11 +1299,12 @@ pub async fn complete_pairing(
 #[tauri::command(rename_all = "camelCase")]
 pub async fn cancel_pairing(
     pairing_id: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<SuccessResponse, String> {
+    let state = state.context()?;
     debug!("[DeviceSync] Canceling pairing session: {}", pairing_id);
 
-    let token = get_access_token(state.inner()).await?;
+    let token = get_access_token(&state).await?;
     let device_id =
         get_device_id_from_store().ok_or_else(|| "No device ID configured".to_string())?;
 
@@ -1300,11 +1322,12 @@ pub async fn cancel_pairing(
 pub async fn claim_pairing(
     code: String,
     ephemeral_public_key: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<ClaimPairingResponse, String> {
+    let state = state.context()?;
     info!("[DeviceSync] Claiming pairing session...");
 
-    let token = get_access_token(state.inner()).await?;
+    let token = get_access_token(&state).await?;
     let device_id =
         get_device_id_from_store().ok_or_else(|| "No device ID configured".to_string())?;
 
@@ -1324,11 +1347,12 @@ pub async fn claim_pairing(
 #[tauri::command(rename_all = "camelCase")]
 pub async fn get_pairing_messages(
     pairing_id: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<PairingMessagesResponse, String> {
+    let state = state.context()?;
     debug!("[DeviceSync] Polling for pairing messages: {}", pairing_id);
 
-    let token = get_access_token(state.inner()).await?;
+    let token = get_access_token(&state).await?;
     let device_id =
         get_device_id_from_store().ok_or_else(|| "No device ID configured".to_string())?;
 
@@ -1355,10 +1379,11 @@ pub async fn complete_pairing_with_transfer(
     sas_proof: serde_json::Value,
     signature: String,
     handle: AppHandle,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<serde_json::Value, String> {
+    let state = state.context()?;
     info!("[DeviceSync] complete_pairing_with_transfer: starting");
-    let context = Arc::clone(state.inner());
+    let context = Arc::clone(&state);
     let identity =
         get_sync_identity_from_store().ok_or_else(|| "No sync identity configured".to_string())?;
     let device_id = identity
@@ -1379,7 +1404,7 @@ pub async fn complete_pairing_with_transfer(
     }
 
     // 3. Approve pairing
-    let token = get_access_token(state.inner()).await?;
+    let token = get_access_token(&state).await?;
     let client = create_client()?;
     info!("[DeviceSync] complete_pairing_with_transfer: approving pairing");
     match client
@@ -1416,7 +1441,7 @@ pub async fn complete_pairing_with_transfer(
         .map_err(|e| e.to_string())?;
 
     // 5. Start background engine
-    let engine_context = Arc::clone(state.inner());
+    let engine_context = Arc::clone(&state);
     tauri::async_runtime::spawn(async move {
         if let Err(err) = ensure_background_engine_started(engine_context).await {
             log::warn!("[DeviceSync] Post-pairing engine start failed: {}", err);
@@ -1434,13 +1459,14 @@ pub async fn confirm_pairing_with_bootstrap(
     min_snapshot_created_at: Option<String>,
     allow_overwrite: bool,
     handle: AppHandle,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<ConfirmPairingWithBootstrapResult, String> {
+    let state = state.context()?;
     info!("[DeviceSync] confirm_pairing_with_bootstrap: starting");
-    let context = Arc::clone(state.inner());
+    let context = Arc::clone(&state);
     let device_id =
         get_device_id_from_store().ok_or_else(|| "No device ID configured".to_string())?;
-    let token = get_access_token(state.inner()).await?;
+    let token = get_access_token(&state).await?;
     let client = create_client()?;
 
     // 1. Confirm pairing (idempotent — tolerate "already confirmed")
@@ -1552,7 +1578,7 @@ pub async fn confirm_pairing_with_bootstrap(
     let _ = engine::run_sync_cycle(Arc::clone(&context), true).await;
 
     // 7. Start background engine
-    let engine_context = Arc::clone(state.inner());
+    let engine_context = Arc::clone(&state);
     tauri::async_runtime::spawn(async move {
         if let Err(err) = ensure_background_engine_started(engine_context).await {
             log::warn!("[DeviceSync] Post-bootstrap engine start failed: {}", err);
@@ -1584,13 +1610,14 @@ pub async fn begin_pairing_confirm(
     proof: String,
     min_snapshot_created_at: Option<String>,
     handle: AppHandle,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<PairingFlowResponse, String> {
+    let state = state.context()?;
     info!("[DeviceSync] begin_pairing_confirm: starting");
-    let context = Arc::clone(state.inner());
+    let context = Arc::clone(&state);
     let device_id =
         get_device_id_from_store().ok_or_else(|| "No device ID configured".to_string())?;
-    let token = get_access_token(state.inner()).await?;
+    let token = get_access_token(&state).await?;
     let client = create_client()?;
     let runtime = context.device_sync_runtime();
 
@@ -1678,7 +1705,7 @@ pub async fn begin_pairing_confirm(
 
     // 6. Run sync cycle + start engine
     let _ = engine::run_sync_cycle(Arc::clone(&context), true).await;
-    let engine_context = Arc::clone(state.inner());
+    let engine_context = Arc::clone(&state);
     tauri::async_runtime::spawn(async move {
         if let Err(err) = ensure_background_engine_started(engine_context).await {
             log::warn!("[DeviceSync] Post-bootstrap engine start failed: {}", err);
@@ -1696,9 +1723,10 @@ pub async fn begin_pairing_confirm(
 pub async fn get_pairing_flow_state(
     flow_id: String,
     handle: AppHandle,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<PairingFlowResponse, String> {
-    let context = Arc::clone(state.inner());
+    let state = state.context()?;
+    let context = Arc::clone(&state);
     let runtime = context.device_sync_runtime();
 
     let phase = runtime
@@ -1717,7 +1745,7 @@ pub async fn get_pairing_flow_state(
                     Ok(None) => {
                         // Bootstrap applied — run sync cycle + start engine
                         let _ = engine::run_sync_cycle(Arc::clone(&context), true).await;
-                        let engine_context = Arc::clone(state.inner());
+                        let engine_context = Arc::clone(&state);
                         tauri::async_runtime::spawn(async move {
                             if let Err(err) = ensure_background_engine_started(engine_context).await
                             {
@@ -1769,9 +1797,10 @@ pub async fn get_pairing_flow_state(
 pub async fn approve_pairing_overwrite(
     flow_id: String,
     handle: AppHandle,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<PairingFlowResponse, String> {
-    let context = Arc::clone(state.inner());
+    let state = state.context()?;
+    let context = Arc::clone(&state);
     let runtime = context.device_sync_runtime();
 
     let phase = runtime
@@ -1816,7 +1845,7 @@ pub async fn approve_pairing_overwrite(
 
             // Bootstrap applied — run sync cycle + start engine
             let _ = engine::run_sync_cycle(Arc::clone(&context), true).await;
-            let engine_context = Arc::clone(state.inner());
+            let engine_context = Arc::clone(&state);
             tauri::async_runtime::spawn(async move {
                 if let Err(err) = ensure_background_engine_started(engine_context).await {
                     log::warn!("[DeviceSync] Post-overwrite engine start failed: {}", err);
@@ -1844,9 +1873,10 @@ pub async fn approve_pairing_overwrite(
 #[tauri::command(rename_all = "camelCase")]
 pub async fn cancel_pairing_flow(
     flow_id: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<PairingFlowResponse, String> {
-    let context = Arc::clone(state.inner());
+    let state = state.context()?;
+    let context = Arc::clone(&state);
     let runtime = context.device_sync_runtime();
 
     if let Some(pairing_id) = runtime.get_flow_pairing_id(&flow_id) {
@@ -1866,11 +1896,12 @@ pub async fn confirm_pairing(
     pairing_id: String,
     proof: Option<String>,
     min_snapshot_created_at: Option<String>,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<ConfirmPairingResponse, String> {
+    let state = state.context()?;
     info!("[DeviceSync] Confirming pairing: {}", pairing_id);
 
-    let token = get_access_token(state.inner()).await?;
+    let token = get_access_token(&state).await?;
     let device_id =
         get_device_id_from_store().ok_or_else(|| "No device ID configured".to_string())?;
 

@@ -30,11 +30,15 @@ async-trait = { workspace = true }
 log = { workspace = true }
 num-traits = { workspace = true }
 sha2 = { workspace = true }
+rand = { workspace = true }
+zeroize = { workspace = true }
+hex = { workspace = true }
 
 # Database (SQLite/Diesel specific)
 diesel = { workspace = true }
 diesel_migrations = { workspace = true }
 rusqlite = { workspace = true }
+libsqlite3-sys = { workspace = true }
 r2d2 = { workspace = true }
 
 [dev-dependencies]

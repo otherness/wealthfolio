@@ -5,7 +5,7 @@
 //! - String ↔ typed value conversion
 //! - Error formatting for the frontend
 
-use std::sync::Arc;
+use crate::database::DatabaseRuntime;
 
 use chrono::{NaiveDate, Utc};
 use log::error;
@@ -13,8 +13,6 @@ use rust_decimal::Decimal;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::State;
-
-use crate::context::ServiceContext;
 
 use wealthfolio_core::assets::{
     AssetKind, CreateAlternativeAssetRequest as CoreCreateRequest,
@@ -199,8 +197,9 @@ pub struct NetWorthHistoryPoint {
 #[tauri::command]
 pub async fn create_alternative_asset(
     request: CreateAlternativeAssetRequest,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<CreateAlternativeAssetResponse, String> {
+    let state = state.context()?;
     // Parse string values to typed values
     let current_value: Decimal = request
         .current_value
@@ -255,8 +254,9 @@ pub async fn create_alternative_asset(
 pub async fn update_alternative_asset_valuation(
     asset_id: String,
     request: UpdateValuationRequest,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<UpdateValuationResponse, String> {
+    let state = state.context()?;
     // Parse string values
     let value: Decimal = request
         .value
@@ -298,8 +298,9 @@ pub async fn update_alternative_asset_metadata(
     name: Option<String>,
     metadata: std::collections::HashMap<String, String>,
     notes: Option<String>,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<(), String> {
+    let state = state.context()?;
     // Convert HashMap<String, String> to HashMap<String, Option<String>>
     // Empty strings mean "remove this key"
     let metadata_map: std::collections::HashMap<String, Option<String>> = metadata
@@ -338,8 +339,9 @@ pub async fn update_alternative_asset_metadata(
 #[tauri::command]
 pub async fn delete_alternative_asset(
     asset_id: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<(), String> {
+    let state = state.context()?;
     state
         .alternative_asset_service()
         .delete_alternative_asset(&asset_id)
@@ -355,8 +357,9 @@ pub async fn delete_alternative_asset(
 pub async fn link_liability(
     liability_id: String,
     request: LinkLiabilityRequest,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<(), String> {
+    let state = state.context()?;
     let core_request = CoreLinkRequest {
         liability_id,
         target_asset_id: request.target_asset_id,
@@ -378,8 +381,9 @@ pub async fn link_liability(
 #[tauri::command]
 pub async fn unlink_liability(
     liability_id: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<(), String> {
+    let state = state.context()?;
     state
         .alternative_asset_service()
         .unlink_liability(&liability_id)
@@ -395,8 +399,9 @@ pub async fn unlink_liability(
 /// Gets all alternative holdings (assets with their latest valuations).
 #[tauri::command]
 pub async fn get_alternative_holdings(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Vec<AlternativeHoldingResponse>, String> {
+    let state = state.context()?;
     let holdings = state
         .alternative_asset_service()
         .get_alternative_holdings()
@@ -442,8 +447,9 @@ pub async fn get_alternative_holdings(
 #[tauri::command]
 pub async fn get_net_worth(
     date: Option<String>,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<NetWorthResponse, String> {
+    let state = state.context()?;
     let as_of_date = match date {
         Some(d) => {
             NaiveDate::parse_from_str(&d, "%Y-%m-%d").map_err(|e| format!("Invalid date: {}", e))?
@@ -498,8 +504,9 @@ pub async fn get_net_worth(
 pub fn get_net_worth_history(
     start_date: String,
     end_date: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Vec<NetWorthHistoryPoint>, String> {
+    let state = state.context()?;
     let start = NaiveDate::parse_from_str(&start_date, "%Y-%m-%d")
         .map_err(|e| format!("Invalid start date: {}", e))?;
     let end = NaiveDate::parse_from_str(&end_date, "%Y-%m-%d")

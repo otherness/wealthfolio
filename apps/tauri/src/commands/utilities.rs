@@ -1,10 +1,11 @@
+use crate::database::DatabaseRuntime;
 use base64::{engine::general_purpose::STANDARD as BASE64_STANDARD, Engine as _};
 use chrono;
 use serde::Serialize;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::time::{Duration, SystemTime};
+use tauri::async_runtime::spawn_blocking;
 use tauri::Manager;
 use tauri::{AppHandle, Emitter, State};
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
@@ -410,15 +411,14 @@ pub async fn write_pending_export_file(
 #[tauri::command]
 pub async fn export_data_file(
     app_handle: AppHandle,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     data_type: String,
     format: String,
 ) -> Result<DataExportResult, String> {
+    let state = state.context()?;
     let data_type = ExportDataType::parse(&data_type).map_err(|e| e.to_string())?;
     let format = ExportFileFormat::parse(&format).map_err(|e| e.to_string())?;
-    let Some(content) =
-        build_data_export_content(state.inner().as_ref(), data_type, format).await?
-    else {
+    let Some(content) = build_data_export_content(state.as_ref(), data_type, format).await? else {
         return Ok(DataExportResult::empty());
     };
 
@@ -511,17 +511,21 @@ pub async fn install_app_update(app_handle: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Internal backup, listed in the app's backup manager and used by restore.
+///
+/// A faithful copy: it inherits the live database's encryption, so on an
+/// encrypted device only this device's retained key opens it.
 #[tauri::command]
-pub async fn backup_database(app_handle: AppHandle) -> Result<String, String> {
-    let app_data_dir = app_handle
-        .path()
-        .app_data_dir()
-        .expect("failed to get app data dir")
-        .to_str()
-        .expect("failed to convert path to string")
-        .to_string();
+pub async fn backup_database(runtime: State<'_, DatabaseRuntime>) -> Result<String, String> {
+    let access = runtime.access()?;
+    let app_data_dir = runtime.app_data_dir().to_string();
 
-    let backup_path = db::backup_database(&app_data_dir).map_err(|e| e.to_string())?;
+    // Copying the whole database is blocking work, and on an encrypted database
+    // every page is decrypted and re-encrypted on the way out.
+    let backup_path = spawn_blocking(move || db::backup_database(&access, &app_data_dir))
+        .await
+        .map_err(|e| format!("Backup task failed: {e}"))?
+        .map_err(|e| e.to_string())?;
 
     Ok(Path::new(&backup_path)
         .file_name()
@@ -530,19 +534,21 @@ pub async fn backup_database(app_handle: AppHandle) -> Result<String, String> {
         .to_string())
 }
 
+/// User-facing export for the mobile share sheet.
+///
+/// Explicitly decrypted and portable, so the file restores on any machine. The
+/// UI must state that the exported file is unencrypted.
 #[tauri::command]
 pub async fn backup_database_to_pending_export(
     app_handle: AppHandle,
+    runtime: State<'_, DatabaseRuntime>,
 ) -> Result<PendingExport, String> {
+    let access = runtime.access()?;
+
     let app_data_dir_path = app_handle
         .path()
         .app_data_dir()
         .map_err(|e| format!("Failed to get app data dir: {}", e))?;
-
-    let app_data_dir = app_data_dir_path
-        .to_str()
-        .ok_or_else(|| "Failed to convert app data dir to string".to_string())?
-        .to_string();
 
     let filename = format!(
         "wealthfolio_backup_{}.db",
@@ -554,7 +560,9 @@ pub async fn backup_database_to_pending_export(
         .ok_or_else(|| "Failed to convert backup export path to string".to_string())?
         .to_string();
 
-    db::backup_database_to_file(&app_data_dir, &backup_path_str)
+    spawn_blocking(move || db::export_portable_backup(&access, &backup_path_str))
+        .await
+        .map_err(|e| format!("Backup export task failed: {e}"))?
         .map_err(|e| format!("Failed to create backup export: {}", e))?;
 
     Ok(PendingExport {
@@ -563,90 +571,69 @@ pub async fn backup_database_to_pending_export(
     })
 }
 
+/// User-facing export to a directory the user chose. Decrypted and portable,
+/// like the pending export above.
 #[tauri::command]
 pub async fn backup_database_to_path(
-    app_handle: AppHandle,
+    runtime: State<'_, DatabaseRuntime>,
     backup_dir: String,
 ) -> Result<String, String> {
-    let app_data_dir = app_handle
-        .path()
-        .app_data_dir()
-        .expect("failed to get app data dir")
-        .to_str()
-        .expect("failed to convert path to string")
-        .to_string();
+    let access = runtime.access()?;
 
     // Normalize the backup directory path (remove file:// prefix if present on iOS/Android)
     let normalized_backup_dir = normalize_file_path(&backup_dir);
 
-    // Create a custom backup path in the specified directory
     let timestamp = chrono::Local::now().format("%Y%m%d_%H%M%S");
     let backup_filename = format!("wealthfolio_backup_{}.db", timestamp);
     let backup_path = Path::new(&normalized_backup_dir).join(&backup_filename);
-
     let backup_path_str = backup_path.to_string_lossy().to_string();
 
-    db::backup_database_to_file(&app_data_dir, &backup_path_str)
+    let target = backup_path_str.clone();
+    spawn_blocking(move || db::export_portable_backup(&access, &target))
+        .await
+        .map_err(|e| format!("Backup task failed: {e}"))?
         .map_err(|e| format!("Failed to backup database: {}", e))?;
 
     Ok(backup_path_str)
 }
 
+/// Replaces the live database with a backup, through the maintenance
+/// coordinator.
+///
+/// The restored database lands on *this device's* encryption state, whatever
+/// the backup's own was, and the user's backup file is never modified or
+/// consumed.
 #[tauri::command]
 pub async fn restore_database(
     app_handle: AppHandle,
+    runtime: State<'_, DatabaseRuntime>,
     backup_file_path: String,
 ) -> Result<(), String> {
-    let app_data_dir = app_handle
-        .path()
-        .app_data_dir()
-        .expect("failed to get app data dir")
-        .to_str()
-        .expect("failed to convert path to string")
-        .to_string();
-
     // Normalize the backup file path (remove file:// prefix if present on iOS/Android)
-    let normalized_backup_path = normalize_file_path(&backup_file_path);
+    let backup_path = PathBuf::from(normalize_file_path(&backup_file_path));
 
-    // Try to get the ServiceContext to perform graceful operations before restore
-    if app_handle
-        .try_state::<std::sync::Arc<crate::context::ServiceContext>>()
-        .is_some()
-    {
-        // Give some time for any pending operations to complete
-        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-    }
+    runtime.restore(&app_handle, backup_path).await?;
 
-    // Use the safe restore function that handles Windows file locking issues
-    db::restore_database_safe(&app_data_dir, &normalized_backup_path).map_err(|e| e.to_string())?;
+    finish_database_maintenance(&app_handle, "database-restored")
+}
 
-    // After successful restore, emit event and show restart dialog
+/// Announces a completed maintenance operation and continues safely.
+///
+/// Desktop restarts unconditionally: continuing on services built over the
+/// replaced file is never correct, and a restart the user can decline is not a
+/// guarantee. iOS has no restart API, so it relies on the runtime having been
+/// rebuilt over the new file, and tells the frontend to refetch everything.
+pub(crate) fn finish_database_maintenance(
+    app_handle: &AppHandle,
+    event: &str,
+) -> Result<(), String> {
     app_handle
-        .emit("database-restored", ())
-        .map_err(|e| format!("Failed to emit database-restored event: {}", e))?;
+        .emit(event, ())
+        .map_err(|e| format!("Failed to emit {} event: {}", event, e))?;
 
-    // On desktop builds prompt for restart, but skip showing dialogs on iOS/Android
     #[cfg(not(any(target_os = "ios", target_os = "android")))]
-    {
-        use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+    app_handle.restart();
 
-        let should_restart = app_handle
-            .dialog()
-            .message(
-                "Database restored successfully!\n\n\
-                 For the best experience, it's recommended to restart the application \
-                 to ensure all data is properly refreshed.\n\n\
-                 Would you like to restart now?",
-            )
-            .title("Database Restored - Restart Required")
-            .buttons(MessageDialogButtons::OkCancel)
-            .kind(MessageDialogKind::Info)
-            .blocking_show();
-
-        if should_restart {
-            app_handle.restart();
-        }
-    }
-
+    #[cfg(any(target_os = "ios", target_os = "android"))]
     Ok(())
 }

@@ -40,7 +40,9 @@ WORKDIR /app
 # Install build tools for the HOST (to run cargo, build scripts)
 # clang/lld are needed for cross-linking
 # pkgconfig is required for openssl-sys to find the target libraries
-RUN apk add --no-cache clang lld build-base git file pkgconfig
+# `perl` is required by the vendored OpenSSL that SQLCipher links against;
+# `build-base` already provides make/gcc.
+RUN apk add --no-cache clang lld build-base git file pkgconfig perl
 
 # Install TARGET dependencies
 # xx-apk installs into /$(xx-info triple)/...

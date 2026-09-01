@@ -31,7 +31,10 @@ async fn backup_database_route(
     State(state): State<Arc<AppState>>,
 ) -> ApiResult<Json<BackupDatabaseResponse>> {
     let data_root = state.data_root.clone();
-    let backup_path = task::spawn_blocking(move || db::backup_database(&data_root))
+    // Faithful copy: on an encrypted server the backup is encrypted too, and
+    // opens on any instance sharing WF_SECRET_KEY.
+    let access = state.db_access.clone();
+    let backup_path = task::spawn_blocking(move || db::backup_database(&access, &data_root))
         .await
         .map_err(|e| anyhow::anyhow!("Failed to execute backup task: {}", e))??;
 
@@ -197,8 +200,31 @@ async fn delete_backup_file_route(
     Ok(StatusCode::NO_CONTENT)
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DatabaseEncryptionStatus {
+    /// Whether the database file is encrypted right now.
+    enabled: bool,
+    /// Always false on the server: encryption is set by `WF_DB_REQUIRE_ENCRYPTION` and
+    /// converted with an offline command, never toggled through the API.
+    supported: bool,
+}
+
+async fn database_encryption_status_route(
+    State(state): State<Arc<AppState>>,
+) -> ApiResult<Json<DatabaseEncryptionStatus>> {
+    Ok(Json(DatabaseEncryptionStatus {
+        enabled: state.db_access.is_encrypted(),
+        supported: false,
+    }))
+}
+
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
+        .route(
+            "/utilities/database/encryption",
+            get(database_encryption_status_route),
+        )
         .route("/utilities/database/backup", post(backup_database_route))
         .route("/utilities/database/backups", get(list_backup_files_route))
         .route(

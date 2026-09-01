@@ -80,6 +80,38 @@ export const backupDatabaseToPendingExport = async (): Promise<PendingExport> =>
   }
 };
 
+export interface DatabaseEncryptionStatus {
+  /** Whether the database file is encrypted right now. */
+  enabled: boolean;
+  /** Whether this platform can toggle encryption at all. */
+  supported: boolean;
+}
+
+export const getDatabaseEncryptionStatus = async (): Promise<DatabaseEncryptionStatus> => {
+  try {
+    return await invoke<DatabaseEncryptionStatus>("get_database_encryption_status");
+  } catch (error) {
+    logger.error("Error reading database encryption status.");
+    throw error;
+  }
+};
+
+/**
+ * Converts the database between encrypted and plaintext.
+ *
+ * On desktop the app restarts as soon as the new database is verified, so this
+ * promise never resolves on success — callers should show a restarting state
+ * rather than waiting for it.
+ */
+export const setDatabaseEncryptionEnabled = async (enabled: boolean): Promise<void> => {
+  try {
+    await invoke<void>("set_database_encryption_enabled", { enabled });
+  } catch (error) {
+    logger.error("Error changing database encryption.");
+    throw error;
+  }
+};
+
 export const restoreDatabase = async (backupFilePath: string): Promise<void> => {
   try {
     await invoke<void>("restore_database", { backupFilePath });

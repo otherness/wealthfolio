@@ -1,3 +1,4 @@
+use crate::database::DatabaseRuntime;
 use std::sync::Arc;
 
 use log::debug;
@@ -11,9 +12,8 @@ use wealthfolio_core::taxonomies::{
 use crate::context::ServiceContext;
 
 #[tauri::command]
-pub async fn get_taxonomies(
-    state: State<'_, Arc<ServiceContext>>,
-) -> Result<Vec<Taxonomy>, String> {
+pub async fn get_taxonomies(state: State<'_, DatabaseRuntime>) -> Result<Vec<Taxonomy>, String> {
+    let state = state.context()?;
     debug!("Fetching all taxonomies...");
     state
         .taxonomy_service()
@@ -24,8 +24,9 @@ pub async fn get_taxonomies(
 #[tauri::command]
 pub async fn get_taxonomy(
     id: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Option<TaxonomyWithCategories>, String> {
+    let state = state.context()?;
     debug!("Fetching taxonomy {}...", id);
     state
         .taxonomy_service()
@@ -36,8 +37,9 @@ pub async fn get_taxonomy(
 #[tauri::command]
 pub async fn create_taxonomy(
     taxonomy: NewTaxonomy,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Taxonomy, String> {
+    let state = state.context()?;
     debug!("Creating taxonomy {}...", taxonomy.name);
     state
         .taxonomy_service()
@@ -49,8 +51,9 @@ pub async fn create_taxonomy(
 #[tauri::command]
 pub async fn update_taxonomy(
     taxonomy: Taxonomy,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Taxonomy, String> {
+    let state = state.context()?;
     debug!("Updating taxonomy {}...", taxonomy.id);
     state
         .taxonomy_service()
@@ -62,8 +65,9 @@ pub async fn update_taxonomy(
 #[tauri::command]
 pub async fn delete_taxonomy(
     id: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<usize, String> {
+    let state = state.context()?;
     debug!("Deleting taxonomy {}...", id);
     state
         .taxonomy_service()
@@ -75,8 +79,9 @@ pub async fn delete_taxonomy(
 #[tauri::command]
 pub async fn create_category(
     category: NewCategory,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Category, String> {
+    let state = state.context()?;
     debug!("Creating category {}...", category.name);
     state
         .taxonomy_service()
@@ -88,8 +93,9 @@ pub async fn create_category(
 #[tauri::command]
 pub async fn update_category(
     category: Category,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Category, String> {
+    let state = state.context()?;
     debug!("Updating category {}...", category.id);
     state
         .taxonomy_service()
@@ -102,8 +108,9 @@ pub async fn update_category(
 pub async fn delete_category(
     taxonomy_id: String,
     category_id: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<usize, String> {
+    let state = state.context()?;
     debug!("Deleting category {}...", category_id);
     state
         .taxonomy_service()
@@ -118,8 +125,9 @@ pub async fn move_category(
     category_id: String,
     new_parent_id: Option<String>,
     position: i32,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Category, String> {
+    let state = state.context()?;
     debug!(
         "Moving category {} to position {}...",
         category_id, position
@@ -134,8 +142,9 @@ pub async fn move_category(
 #[tauri::command]
 pub async fn import_taxonomy_json(
     json_str: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Taxonomy, String> {
+    let state = state.context()?;
     debug!("Importing taxonomy from JSON...");
     state
         .taxonomy_service()
@@ -147,8 +156,9 @@ pub async fn import_taxonomy_json(
 #[tauri::command]
 pub async fn export_taxonomy_json(
     id: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<String, String> {
+    let state = state.context()?;
     debug!("Exporting taxonomy {} to JSON...", id);
     state
         .taxonomy_service()
@@ -159,8 +169,9 @@ pub async fn export_taxonomy_json(
 #[tauri::command]
 pub async fn get_asset_taxonomy_assignments(
     asset_id: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Vec<AssetTaxonomyAssignment>, String> {
+    let state = state.context()?;
     debug!("Fetching taxonomy assignments for asset {}...", asset_id);
     state
         .taxonomy_service()
@@ -171,8 +182,9 @@ pub async fn get_asset_taxonomy_assignments(
 #[tauri::command]
 pub async fn assign_asset_to_category(
     assignment: NewAssetTaxonomyAssignment,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<AssetTaxonomyAssignment, String> {
+    let state = state.context()?;
     debug!(
         "Assigning asset {} to category {}...",
         assignment.asset_id, assignment.category_id
@@ -189,8 +201,9 @@ pub async fn replace_asset_taxonomy_assignments(
     asset_id: String,
     taxonomy_id: String,
     assignments: Vec<NewAssetTaxonomyAssignment>,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Vec<AssetTaxonomyAssignment>, String> {
+    let state = state.context()?;
     debug!(
         "Replacing taxonomy {} assignments for asset {}...",
         taxonomy_id, asset_id
@@ -205,8 +218,9 @@ pub async fn replace_asset_taxonomy_assignments(
 #[tauri::command]
 pub async fn remove_asset_taxonomy_assignment(
     id: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<usize, String> {
+    let state = state.context()?;
     debug!("Removing taxonomy assignment {}...", id);
     state
         .taxonomy_service()
@@ -222,8 +236,9 @@ pub async fn remove_asset_taxonomy_assignment(
 /// Check if legacy classification migration is needed
 #[tauri::command]
 pub async fn get_migration_status(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<MigrationStatus, String> {
+    let state = state.context()?;
     debug!("Checking migration status...");
     wealthfolio_core::health::get_migration_status(
         state.asset_service().as_ref(),
@@ -235,8 +250,9 @@ pub async fn get_migration_status(
 /// Migrate legacy sector and country classifications to taxonomy system
 #[tauri::command]
 pub async fn migrate_legacy_classifications(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<MigrationResult, String> {
+    let state = state.context()?;
     run_legacy_migration(&state).await
 }
 

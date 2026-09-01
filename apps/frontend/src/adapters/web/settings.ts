@@ -82,6 +82,28 @@ export interface PendingExport {
 export const backupDatabaseToPendingExport = (): Promise<PendingExport> =>
   Promise.reject(new Error("Pending backup exports are only supported in the Tauri app"));
 
+export interface DatabaseEncryptionStatus {
+  enabled: boolean;
+  supported: boolean;
+}
+
+export const getDatabaseEncryptionStatus = async (): Promise<DatabaseEncryptionStatus> => {
+  try {
+    return await invoke<DatabaseEncryptionStatus>("get_database_encryption_status");
+  } catch (error) {
+    logger.error("Error reading database encryption status.");
+    throw error;
+  }
+};
+
+export const setDatabaseEncryptionEnabled = (_enabled: boolean): Promise<void> =>
+  Promise.reject(
+    new Error(
+      "Server database encryption is converted with `wealthfolio-server db encrypt` " +
+        "and required with WF_DB_REQUIRE_ENCRYPTION",
+    ),
+  );
+
 export const restoreDatabase = (_backupFilePath: string): Promise<void> =>
   Promise.reject(
     new Error("Restore in web mode requires stopping Wealthfolio and replacing app.db"),

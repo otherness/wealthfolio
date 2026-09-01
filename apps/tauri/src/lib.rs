@@ -3,6 +3,7 @@
 
 mod commands;
 mod context;
+mod database;
 mod domain_events;
 mod events;
 mod listeners;
@@ -85,7 +86,7 @@ fn portfolio_history_backfill_needed(context: &Arc<context::ServiceContext>) -> 
 fn start_sync_outbox_wake_worker(
     mut receiver: tokio::sync::mpsc::Receiver<()>,
     context: Arc<context::ServiceContext>,
-) {
+) -> tauri::async_runtime::JoinHandle<()> {
     tauri::async_runtime::spawn(async move {
         while receiver.recv().await.is_some() {
             while receiver.try_recv().is_ok() {}
@@ -104,7 +105,7 @@ fn start_sync_outbox_wake_worker(
                 context.device_sync_runtime().notify_sync_work_available();
             }
         }
-    });
+    })
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -138,43 +139,21 @@ mod desktop {
         let _ = handle.plugin(tauri_plugin_updater::Builder::new().build());
     }
 
-    /// Performs synchronous setup on desktop: initializes context, menu, and registers listeners.
-    pub fn setup(handle: AppHandle, app_data_dir: &str) -> Result<(), Box<dyn std::error::Error>> {
-        // Initialize context synchronously (required before any commands can work)
-        let init_result = tauri::async_runtime::block_on(async {
-            context::initialize_context(app_data_dir).await
-        })?;
-        let context = Arc::new(init_result.context);
-        let event_receiver = init_result.event_receiver;
-        let sync_outbox_wake_receiver = init_result.sync_outbox_wake_receiver;
-
-        // Make context available to all commands
-        handle.manage(Arc::clone(&context));
-
+    /// Performs synchronous setup on desktop: opens the database, sets up the
+    /// menu, and registers listeners.
+    pub fn setup(handle: AppHandle) -> Result<(), Box<dyn std::error::Error>> {
         // Embedded MCP server: clear any stale lock file from an unclean
-        // shutdown, then auto-start when enabled + auto-start are both set.
+        // shutdown before the runtime's workers may start it again.
         mcp::remove_stale_lock(&handle);
-        {
-            let mcp_handle = handle.clone();
-            let mcp_context = Arc::clone(&context);
-            tauri::async_runtime::spawn(async move {
-                mcp::start_if_enabled(&mcp_handle, &mcp_context).await;
-            });
-        }
 
-        #[cfg(feature = "device-sync")]
-        start_sync_outbox_wake_worker(sync_outbox_wake_receiver, Arc::clone(&context));
-
-        // Start the domain event queue worker now that context is managed
-        // This must be done in an async context since it spawns a tokio task
-        let worker_handle = handle.clone();
-        let worker_context = Arc::clone(&context);
-        tauri::async_runtime::spawn(async move {
-            domain_events::TauriDomainEventSink::start_queue_worker(
-                event_receiver,
-                worker_handle,
-                worker_context,
-            );
+        // Bring the database runtime up synchronously (required before any
+        // command can work). The runtime spawns every background worker and
+        // retains their handles.
+        let context = tauri::async_runtime::block_on(async {
+            handle
+                .state::<database::DatabaseRuntime>()
+                .initialize(&handle)
+                .await
         });
 
         // Menu setup is synchronous (no I/O)
@@ -184,42 +163,22 @@ mod desktop {
         // The frontend will trigger the initial portfolio update and update check after it's mounted
         emit_app_ready(&handle);
 
-        if portfolio_history_backfill_needed(&context) {
-            emit_portfolio_trigger_recalculate(&handle, PortfolioRequestPayload::builder().build());
-        }
-
-        // Trigger startup sync (async, non-blocking)
-        // After this, user manually triggers sync via button
-        let startup_handle = handle.clone();
-        let startup_context = Arc::clone(&context);
-        tauri::async_runtime::spawn(async move {
-            scheduler::run_startup_sync(&startup_handle, &startup_context).await;
-        });
-
-        // Start periodic market data sync (6h interval, 2min initial delay)
-        let periodic_quote_service = Arc::clone(&context.quote_service);
-        tauri::async_runtime::spawn(async move {
-            wealthfolio_core::quotes::scheduler::run_periodic_sync(
-                periodic_quote_service,
-                std::time::Duration::from_secs(120),
-                std::time::Duration::from_secs(6 * 3600),
-            )
-            .await;
-        });
-
-        // Start background device sync engine (self-skips when device is not READY).
-        #[cfg(feature = "device-sync")]
-        {
-            let device_sync_context = Arc::clone(&context);
-            tauri::async_runtime::spawn(async move {
-                if let Err(err) = crate::commands::device_sync::ensure_background_engine_started(
-                    device_sync_context,
-                )
-                .await
-                {
-                    log::warn!("Failed to start background device sync engine: {}", err);
+        match context {
+            Ok(context) => {
+                if portfolio_history_backfill_needed(&context) {
+                    emit_portfolio_trigger_recalculate(
+                        &handle,
+                        PortfolioRequestPayload::builder().build(),
+                    );
                 }
-            });
+            }
+            // Start anyway, as mobile does. Returning an error here aborts
+            // `Builder::build`, so the event loop never runs and the user gets a
+            // window-less exit with the reason only in a log file. A database
+            // that cannot be opened — an encrypted one whose key did not survive
+            // a machine migration, say — is exactly the case that needs to be
+            // *shown*; commands report it as unavailable until it is fixed.
+            Err(e) => error!("Failed to open the database: {}", e),
         }
 
         Ok(())
@@ -248,26 +207,11 @@ mod mobile {
     }
 
     /// Performs async setup on mobile without blocking the main thread.
-    pub fn setup(handle: AppHandle, app_data_dir: String) {
+    pub fn setup(handle: AppHandle) {
         tauri::async_runtime::spawn(async move {
-            match context::initialize_context(&app_data_dir).await {
-                Ok(init_result) => {
-                    let context = Arc::new(init_result.context);
-                    let event_receiver = init_result.event_receiver;
-                    let sync_outbox_wake_receiver = init_result.sync_outbox_wake_receiver;
-
-                    handle.manage(Arc::clone(&context));
-
-                    #[cfg(feature = "device-sync")]
-                    start_sync_outbox_wake_worker(sync_outbox_wake_receiver, Arc::clone(&context));
-
-                    // Start the domain event queue worker now that context is managed
-                    domain_events::TauriDomainEventSink::start_queue_worker(
-                        event_receiver,
-                        handle.clone(),
-                        Arc::clone(&context),
-                    );
-
+            let runtime = handle.state::<database::DatabaseRuntime>();
+            match runtime.initialize(&handle).await {
+                Ok(context) => {
                     // Notify frontend that app is ready
                     // The frontend will trigger the initial portfolio update after it's mounted
                     emit_app_ready(&handle);
@@ -277,35 +221,6 @@ mod mobile {
                             &handle,
                             PortfolioRequestPayload::builder().build(),
                         );
-                    }
-
-                    // Trigger startup broker sync (async, non-blocking).
-                    // After this, user manually triggers sync via button.
-                    let startup_handle = handle.clone();
-                    let startup_context = Arc::clone(&context);
-                    tauri::async_runtime::spawn(async move {
-                        scheduler::run_startup_sync(&startup_handle, &startup_context).await;
-                    });
-
-                    // Start background device sync while the mobile app is active.
-                    // The loop self-skips when identity is not configured, and frontend lifecycle
-                    // triggers still cover resume/online cases after iOS suspends the process.
-                    #[cfg(feature = "device-sync")]
-                    {
-                        let device_sync_context = Arc::clone(&context);
-                        tauri::async_runtime::spawn(async move {
-                            if let Err(err) =
-                                crate::commands::device_sync::ensure_background_engine_started(
-                                    device_sync_context,
-                                )
-                                .await
-                            {
-                                log::warn!(
-                                    "Failed to start background device sync engine: {}",
-                                    err
-                                );
-                            }
-                        });
                     }
                 }
                 Err(e) => {
@@ -379,15 +294,17 @@ pub fn run() {
             // Embedded MCP server state (commands need it managed up front)
             handle.manage(mcp::McpServerState::default());
 
+            // The database runtime is managed before anything can reach it, and
+            // stays managed for the life of the process: maintenance takes its
+            // *contents*, never the state entry itself.
+            handle.manage(database::DatabaseRuntime::new(get_app_data_dir(&handle)?));
+
             // Platform-specific plugin initialization
             #[cfg(desktop)]
             desktop::init_plugins(&handle);
 
             #[cfg(mobile)]
             mobile::init_plugins(&handle);
-
-            // Get app data directory
-            let app_data_dir = get_app_data_dir(&handle)?;
 
             // Setup event listeners (platform-agnostic)
             listeners::setup_event_listeners(handle.clone());
@@ -404,13 +321,13 @@ pub fn run() {
 
             // Platform-specific setup
             #[cfg(desktop)]
-            desktop::setup(handle, &app_data_dir).map_err(|e| {
+            desktop::setup(handle).map_err(|e| {
                 error!("Desktop setup failed: {}", e);
                 e
             })?;
 
             #[cfg(mobile)]
-            mobile::setup(handle, app_data_dir);
+            mobile::setup(handle);
 
             Ok(())
         })
@@ -561,6 +478,9 @@ pub fn run() {
             commands::utilities::backup_database_to_pending_export,
             commands::utilities::backup_database_to_path,
             commands::utilities::restore_database,
+            // Database encryption commands
+            commands::database::get_database_encryption_status,
+            commands::database::set_database_encryption_enabled,
             // Asset commands
             commands::asset::get_asset_profile,
             commands::asset::get_assets,
@@ -878,8 +798,10 @@ pub fn run() {
                 }
 
                 #[cfg(feature = "device-sync")]
-                if let Some(context) = _handle.try_state::<Arc<context::ServiceContext>>() {
-                    let context = Arc::clone(context.inner());
+                if let Some(context) = _handle
+                    .try_state::<database::DatabaseRuntime>()
+                    .and_then(|runtime| runtime.try_context())
+                {
                     tauri::async_runtime::block_on(async move {
                         if let Err(err) =
                             crate::commands::device_sync::ensure_background_engine_stopped(context)

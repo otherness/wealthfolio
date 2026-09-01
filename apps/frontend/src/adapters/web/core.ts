@@ -40,6 +40,10 @@ export const COMMANDS: CommandMap = {
   is_auto_update_check_enabled: { method: "GET", path: "/settings/auto-update-enabled" },
   get_app_info: { method: "GET", path: "/app/info" },
   check_update: { method: "GET", path: "/app/check-update" },
+  get_database_encryption_status: {
+    method: "GET",
+    path: "/utilities/database/encryption",
+  },
   backup_database: { method: "POST", path: "/utilities/database/backup" },
   list_database_backups: { method: "GET", path: "/utilities/database/backups" },
   delete_database_backup: { method: "DELETE", path: "/utilities/database/backups" },

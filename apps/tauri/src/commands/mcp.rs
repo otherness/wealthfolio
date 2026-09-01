@@ -1,6 +1,6 @@
 //! Agent Access (embedded MCP server) commands.
 
-use std::sync::Arc;
+use crate::database::DatabaseRuntime;
 
 #[cfg(desktop)]
 use log::debug;
@@ -14,6 +14,7 @@ use wealthfolio_storage_sqlite::agent::{
     AuditFilter, NewPersonalAccessToken, PersonalAccessTokenDB,
 };
 
+#[cfg(desktop)]
 use crate::context::ServiceContext;
 use crate::mcp::{self, McpServerState};
 
@@ -122,9 +123,10 @@ async fn build_status(state: &McpServerState, ctx: &ServiceContext) -> McpStatus
 
 #[tauri::command]
 pub async fn mcp_get_status(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     mcp_state: State<'_, McpServerState>,
 ) -> Result<McpStatus, String> {
+    let state = state.context()?;
     #[cfg(desktop)]
     {
         Ok(build_status(&mcp_state, &state).await)
@@ -139,10 +141,11 @@ pub async fn mcp_get_status(
 #[tauri::command]
 pub async fn mcp_set_enabled(
     enabled: bool,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     mcp_state: State<'_, McpServerState>,
     handle: AppHandle,
 ) -> Result<McpStatus, String> {
+    let state = state.context()?;
     #[cfg(desktop)]
     {
         debug!("Setting Agent Access feature enabled={}", enabled);
@@ -159,10 +162,11 @@ pub async fn mcp_set_enabled(
 #[tauri::command]
 pub async fn mcp_set_auto_start(
     auto_start: bool,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     mcp_state: State<'_, McpServerState>,
     handle: AppHandle,
 ) -> Result<McpStatus, String> {
+    let state = state.context()?;
     #[cfg(desktop)]
     {
         debug!("Setting MCP auto-start={}", auto_start);
@@ -178,10 +182,11 @@ pub async fn mcp_set_auto_start(
 
 #[tauri::command]
 pub async fn mcp_start(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     mcp_state: State<'_, McpServerState>,
     handle: AppHandle,
 ) -> Result<McpStatus, String> {
+    let state = state.context()?;
     #[cfg(desktop)]
     {
         debug!("Starting MCP server");
@@ -197,10 +202,11 @@ pub async fn mcp_start(
 
 #[tauri::command]
 pub async fn mcp_stop(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     mcp_state: State<'_, McpServerState>,
     handle: AppHandle,
 ) -> Result<McpStatus, String> {
+    let state = state.context()?;
     #[cfg(desktop)]
     {
         debug!("Stopping MCP server");
@@ -217,10 +223,11 @@ pub async fn mcp_stop(
 #[tauri::command]
 pub async fn mcp_set_audit_enabled(
     enabled: bool,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     mcp_state: State<'_, McpServerState>,
     handle: AppHandle,
 ) -> Result<McpStatus, String> {
+    let state = state.context()?;
     #[cfg(desktop)]
     {
         debug!("Setting MCP audit logging enabled={}", enabled);
@@ -242,8 +249,9 @@ pub async fn mcp_list_audit_log(
     tools: Option<Vec<String>>,
     outcomes: Option<Vec<String>>,
     actor_kinds: Option<Vec<String>>,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<McpAuditPage, String> {
+    let state = state.context()?;
     #[cfg(desktop)]
     {
         let tools = tools.unwrap_or_default();
@@ -276,9 +284,8 @@ pub async fn mcp_list_audit_log(
 }
 
 #[tauri::command]
-pub async fn mcp_list_tokens(
-    state: State<'_, Arc<ServiceContext>>,
-) -> Result<Vec<TokenInfo>, String> {
+pub async fn mcp_list_tokens(state: State<'_, DatabaseRuntime>) -> Result<Vec<TokenInfo>, String> {
+    let state = state.context()?;
     #[cfg(desktop)]
     {
         let tokens = state
@@ -299,8 +306,9 @@ pub async fn mcp_create_token(
     name: String,
     expires_at: Option<String>,
     scopes: Vec<String>,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<CreatedToken, String> {
+    let state = state.context()?;
     #[cfg(desktop)]
     {
         let name = name.trim().to_string();
@@ -348,10 +356,8 @@ pub async fn mcp_create_token(
 }
 
 #[tauri::command]
-pub async fn mcp_delete_token(
-    id: String,
-    state: State<'_, Arc<ServiceContext>>,
-) -> Result<(), String> {
+pub async fn mcp_delete_token(id: String, state: State<'_, DatabaseRuntime>) -> Result<(), String> {
+    let state = state.context()?;
     #[cfg(desktop)]
     {
         let deleted = state
@@ -373,7 +379,8 @@ pub async fn mcp_delete_token(
 }
 
 #[tauri::command]
-pub async fn mcp_purge_audit_log(state: State<'_, Arc<ServiceContext>>) -> Result<u64, String> {
+pub async fn mcp_purge_audit_log(state: State<'_, DatabaseRuntime>) -> Result<u64, String> {
+    let state = state.context()?;
     #[cfg(desktop)]
     {
         debug!("Purging MCP audit log");

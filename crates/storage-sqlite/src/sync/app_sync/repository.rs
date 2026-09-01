@@ -85,6 +85,26 @@ fn escape_sqlite_str(value: &str) -> String {
     value.replace('\'', "''")
 }
 
+/// A unique path for a short-lived snapshot file, in the private scratch
+/// directory beside the application database rather than the shared system temp
+/// directory.
+fn snapshot_scratch_path(conn: &mut SqliteConnection, purpose: &str) -> Result<std::path::PathBuf> {
+    #[derive(QueryableByName)]
+    struct MainDatabaseFile {
+        #[diesel(sql_type = diesel::sql_types::Text)]
+        file: String,
+    }
+
+    let main_file: String =
+        diesel::sql_query("SELECT file FROM pragma_database_list WHERE name = 'main'")
+            .get_result::<MainDatabaseFile>(conn)
+            .map(|row| row.file)
+            .map_err(StorageError::from)?;
+
+    let dir = crate::db::scratch_dir_beside(std::path::Path::new(&main_file))?;
+    Ok(dir.join(format!("wf_snapshot_{}_{}.db", purpose, Uuid::now_v7())))
+}
+
 fn quote_identifier(value: &str) -> String {
     format!("`{}`", value.replace('`', "``"))
 }
@@ -3145,11 +3165,20 @@ impl AppSyncRepository {
                 validate_sync_table(table)?;
             }
 
-            let snapshot_path =
-                std::env::temp_dir().join(format!("wf_snapshot_export_{}.db", Uuid::now_v7()));
+            let snapshot_path = snapshot_scratch_path(&mut conn, "export")?;
             let escaped_path = escape_sqlite_str(&snapshot_path.to_string_lossy());
             let snapshot_alias = format!("snapshot_export_{}", Uuid::now_v7().simple());
-            let attach_sql = format!("ATTACH DATABASE '{}' AS {}", escaped_path, snapshot_alias);
+            // `KEY ''` is required, not cosmetic: SQLCipher's default for an
+            // attached database is to reuse the main database's key, so once the
+            // main database is encrypted this export would silently be encrypted
+            // with *this device's* key and uploaded in that form, while the
+            // receiving device attaches it expecting plaintext. Snapshots stay
+            // plaintext on the wire, which is what device sync's transport-level
+            // E2EE already protects.
+            let attach_sql = format!(
+                "ATTACH DATABASE '{}' AS {} KEY ''",
+                escaped_path, snapshot_alias
+            );
             let tx_result = conn.immediate_transaction::<_, StorageError, _>(|tx| {
                 diesel::sql_query(attach_sql.clone())
                     .execute(tx)
@@ -3183,13 +3212,15 @@ impl AppSyncRepository {
                 return Err(Error::from(err));
             }
 
-            let payload = std::fs::read(&snapshot_path).map_err(|e| {
+            // Remove the snapshot on every exit path, not just the success one.
+            let payload = std::fs::read(&snapshot_path);
+            let _ = std::fs::remove_file(&snapshot_path);
+            let payload = payload.map_err(|e| {
                 Error::Database(DatabaseError::Internal(format!(
                     "Failed reading exported snapshot: {}",
                     e
                 )))
             })?;
-            let _ = std::fs::remove_file(snapshot_path);
             Ok(payload)
         })
         .await
@@ -3217,8 +3248,13 @@ impl AppSyncRepository {
                 let now = Utc::now().to_rfc3339();
                 let escaped_path = escape_sqlite_str(&snapshot_db_path);
                 let snapshot_alias = format!("snapshot_{}", Uuid::new_v4().simple());
-                let attach_sql =
-                    format!("ATTACH DATABASE '{}' AS {}", escaped_path, snapshot_alias);
+                // Downloaded snapshots are plaintext (see the export site), so
+                // the attachment must say so explicitly rather than inheriting
+                // the main database's key.
+                let attach_sql = format!(
+                    "ATTACH DATABASE '{}' AS {} KEY ''",
+                    escaped_path, snapshot_alias
+                );
 
                 // APP_SYNC_TABLES is parent-first for inserts. Restore clears the
                 // selected tables in reverse order, then inserts in canonical order.

@@ -156,13 +156,15 @@ export {
   listDatabaseBackups,
   backupDatabaseToPath,
   backupDatabaseToPendingExport,
+  getDatabaseEncryptionStatus,
+  setDatabaseEncryptionEnabled,
   restoreDatabase,
   getAppInfo,
   checkForUpdates,
   installUpdate,
   getPlatform,
 } from "./settings";
-export type { DatabaseBackup } from "./settings";
+export type { DatabaseBackup, DatabaseEncryptionStatus } from "./settings";
 
 // Addon Commands (platform-specific)
 export {

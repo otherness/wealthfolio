@@ -1,6 +1,5 @@
-use std::sync::Arc;
+use crate::database::DatabaseRuntime;
 
-use crate::context::ServiceContext;
 use crate::events::{emit_portfolio_trigger_recalculate, PortfolioRequestPayload};
 use log::debug;
 use tauri::{AppHandle, State};
@@ -28,7 +27,8 @@ fn recalculate_mode_for_settings_change(
 }
 
 #[tauri::command]
-pub async fn get_settings(state: State<'_, Arc<ServiceContext>>) -> Result<Settings, String> {
+pub async fn get_settings(state: State<'_, DatabaseRuntime>) -> Result<Settings, String> {
+    let state = state.context()?;
     debug!("Fetching active settings...");
     state
         .settings_service()
@@ -38,8 +38,9 @@ pub async fn get_settings(state: State<'_, Arc<ServiceContext>>) -> Result<Setti
 
 #[tauri::command]
 pub async fn is_auto_update_check_enabled(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<bool, String> {
+    let state = state.context()?;
     debug!("Checking if auto-update check is enabled...");
     state
         .settings_service()
@@ -50,9 +51,10 @@ pub async fn is_auto_update_check_enabled(
 #[tauri::command]
 pub async fn update_settings(
     settings_update: SettingsUpdate,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     handle: AppHandle,
 ) -> Result<Settings, String> {
+    let state = state.context()?;
     debug!("Updating settings...");
     let service = state.settings_service();
     let previous_base_currency = state.get_base_currency();
@@ -134,9 +136,10 @@ pub async fn update_settings(
 #[tauri::command]
 pub async fn update_exchange_rate(
     rate: ExchangeRate,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     handle: AppHandle,
 ) -> Result<ExchangeRate, String> {
+    let state = state.context()?;
     debug!("Updating exchange rate...");
     let result = state
         .fx_service()
@@ -158,8 +161,9 @@ pub async fn update_exchange_rate(
 
 #[tauri::command]
 pub async fn get_latest_exchange_rates(
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Vec<ExchangeRate>, String> {
+    let state = state.context()?;
     debug!("Fetching exchange rates...");
     state
         .fx_service()
@@ -170,8 +174,9 @@ pub async fn get_latest_exchange_rates(
 #[tauri::command]
 pub async fn get_exchange_rates_for_dates(
     request: ExchangeRateDateBatchRequest,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
 ) -> Result<Vec<ExchangeRateDateResult>, String> {
+    let state = state.context()?;
     debug!("Fetching historical exchange rates for dates...");
     Ok(state
         .fx_service()
@@ -181,9 +186,10 @@ pub async fn get_exchange_rates_for_dates(
 #[tauri::command]
 pub async fn add_exchange_rate(
     new_rate: NewExchangeRate,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     handle: AppHandle,
 ) -> Result<ExchangeRate, String> {
+    let state = state.context()?;
     debug!("Adding new exchange rate...");
     let result = state
         .fx_service()
@@ -215,9 +221,10 @@ pub async fn add_exchange_rate(
 #[tauri::command]
 pub async fn delete_exchange_rate(
     rate_id: String,
-    state: State<'_, Arc<ServiceContext>>,
+    state: State<'_, DatabaseRuntime>,
     handle: AppHandle,
 ) -> Result<(), String> {
+    let state = state.context()?;
     debug!("Deleting exchange rate...");
     state
         .fx_service()
