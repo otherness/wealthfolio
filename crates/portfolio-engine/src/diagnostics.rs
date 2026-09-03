@@ -49,6 +49,10 @@ pub enum DiagnosticCode {
     CarriedQuote,
     /// No quote observation usable for the day.
     MissingQuote,
+    /// Quote observation with a non-positive close; ignored.
+    InvalidQuote,
+    /// FX observation with a non-positive rate; ignored.
+    InvalidFxRate,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

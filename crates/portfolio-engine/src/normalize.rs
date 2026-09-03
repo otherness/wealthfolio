@@ -109,6 +109,16 @@ pub fn normalize(raw: RawFacts) -> Result<Normalized, EngineError> {
             ));
             continue;
         };
+        // A zero or negative close is a broken row, not a price: using it
+        // would value the position at nothing while reporting Complete.
+        if quote.close <= Decimal::ZERO {
+            diagnostics.push(Diagnostic::warning(
+                DiagnosticCode::InvalidQuote,
+                format!("{}@{}", quote.asset_id, quote.day),
+                format!("quote close {} is not positive; ignored", quote.close),
+            ));
+            continue;
+        }
         quotes.push(QuoteObservation {
             asset,
             day: quote.day,
@@ -122,6 +132,15 @@ pub fn normalize(raw: RawFacts) -> Result<Normalized, EngineError> {
     let mut fx_rates = Vec::with_capacity(raw.fx_rates.len());
     for rate in raw.fx_rates {
         match (Currency::parse(&rate.from), Currency::parse(&rate.to)) {
+            // A zero or negative rate would convert every bucket to nothing
+            // (or its inverse to infinity) while reporting Complete.
+            (Some(from), Some(to)) if from != to && rate.rate <= Decimal::ZERO => {
+                diagnostics.push(Diagnostic::warning(
+                    DiagnosticCode::InvalidFxRate,
+                    format!("fx {}/{}@{}", rate.from, rate.to, rate.day),
+                    format!("FX rate {} is not positive; ignored", rate.rate),
+                ));
+            }
             (Some(from), Some(to)) if from != to => fx_rates.push(FxObservation {
                 from,
                 to,

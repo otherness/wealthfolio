@@ -486,6 +486,10 @@ product shows when the inputs are imperfect.
   quote makes the day unavailable rather than valuing it at zero, which would
   otherwise report a complete −100 % return for an asset the system simply could
   not price.
+- **A non-positive price or rate is a broken row.** Quote closes and FX rates
+  at or below zero are dropped at normalise with a diagnostic instead of being
+  used, so a glitch cannot value a position at nothing or a bucket at zero
+  while the day reads complete.
 - **Unsupported settings fail loudly.** An account configured for a cost-basis
   method the kernel does not implement fails with a per-account error instead of
   being computed as FIFO and labelled FIFO.
