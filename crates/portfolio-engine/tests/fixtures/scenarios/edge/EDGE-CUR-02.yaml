@@ -1,0 +1,44 @@
+id: EDGE-CUR-02
+title: Every currency candidate empty at normalize
+intent: >
+  Kernel-only: an activity whose currency is "" for an asset whose quote
+  currency is also "" leaves normalize with no currency candidate at all
+  (activity, asset, account fallback is the last resort). The kernel must
+  emit a diagnostic instead of the ingest layer's silent "USD" default. The
+  legacy in-memory capture has no deterministic counterpart (the silent
+  default lives in the ingest layer, outside the captured pipeline), so no
+  legacy golden is produced. Marked [K].
+markers: [K]
+policy:
+  base_currency: USD
+  timezone: UTC
+  as_of: 2025-01-08
+accounts:
+  - id: acc-1
+    currency: USD
+assets:
+  - id: blank
+    symbol: BLANK
+    quote_ccy: ""
+activities:
+  - id: dep-1
+    account: acc-1
+    type: DEPOSIT
+    date: 2025-01-02T10:00:00Z
+    amount: 1000
+  - id: buy-blank
+    account: acc-1
+    type: BUY
+    date: 2025-01-03T10:00:00Z
+    asset: blank
+    quantity: 5
+    unit_price: 100
+    amount: 500
+    currency: ""
+quotes:
+  - { asset: blank, day: 2025-01-03, close: 100, currency: "" }
+expected_notes: >
+  Kernel golden only: the BUY resolves to the account currency (USD) with a
+  MissingCurrency-style diagnostic; cash 500, 5 units of blank priced 100 in
+  the fallback currency, never a "" bucket and never a silent USD default
+  without a diagnostic.

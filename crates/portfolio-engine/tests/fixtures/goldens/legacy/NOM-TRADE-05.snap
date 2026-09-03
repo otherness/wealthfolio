@@ -1,0 +1,439 @@
+---
+source: crates/core/src/test_support/legacy_goldens.rs
+---
+scenario: NOM-TRADE-05
+as_of: 2025-01-10
+base_currency: USD
+baseline:
+  accounts:
+    acc-1:
+      currency: USD
+      tracking_mode: TRANSACTIONS
+      keyframes:
+        - date: 2025-01-02
+          source: CALCULATED
+          positions: {}
+          cash:
+            USD: "1000"
+          cost_basis: "0"
+          net_contribution: "1000"
+          net_contribution_base: "1000"
+          cash_total_account_currency: "1000"
+          cash_total_base_currency: "1000"
+        - date: 2025-01-03
+          source: CALCULATED
+          positions:
+            pny:
+              quantity: "2"
+              average_cost: "10"
+              total_cost_basis: "20"
+              currency: USD
+              cost_basis_account: "20"
+              cost_basis_base: "20"
+              contract_multiplier: "1"
+              is_alternative: false
+          cash:
+            USD: "980"
+          cost_basis: "20"
+          net_contribution: "1000"
+          net_contribution_base: "1000"
+          cash_total_account_currency: "980"
+          cash_total_base_currency: "980"
+        - date: 2025-01-06
+          source: CALCULATED
+          positions:
+            pny:
+              quantity: "1"
+              average_cost: "10"
+              total_cost_basis: "10"
+              currency: USD
+              cost_basis_account: "10"
+              cost_basis_base: "10"
+              contract_multiplier: "1"
+              is_alternative: false
+          cash:
+            USD: "978"
+          cost_basis: "10"
+          net_contribution: "1000"
+          net_contribution_base: "1000"
+          cash_total_account_currency: "978"
+          cash_total_base_currency: "978"
+        - date: 2025-01-08
+          source: CALCULATED
+          positions:
+            pny:
+              quantity: "0"
+              average_cost: "0"
+              total_cost_basis: "0"
+              currency: USD
+              cost_basis_account: ~
+              cost_basis_base: ~
+              contract_multiplier: "1"
+              is_alternative: false
+          cash:
+            USD: "1078"
+          cost_basis: "0"
+          net_contribution: "1000"
+          net_contribution_base: "1000"
+          cash_total_account_currency: "1078"
+          cash_total_base_currency: "1078"
+      lots:
+        - id: buy-1
+          asset_id: pny
+          open_date: 2025-01-03
+          open_activity_id: buy-1
+          original_quantity: "2"
+          remaining_quantity: "0"
+          cost_per_unit: "10"
+          original_cost_basis: "20"
+          remaining_cost_basis: "0"
+          original_cost_basis_base: "20"
+          remaining_cost_basis_base: "0"
+          fee_allocated: "0"
+          fee_allocated_base: "0"
+          tax_allocated: "0"
+          tax_allocated_base: "0"
+          currency: USD
+          base_currency: USD
+          fx_rate_to_base: "1"
+          fx_rate_to_account: ~
+          split_ratio: "1"
+          is_closed: true
+          close_date: 2025-01-08
+          close_activity_id: sell-2
+      disposals:
+        - id: "sell-1:buy-1:0"
+          lot_id: buy-1
+          asset_id: pny
+          activity_id: sell-1
+          date: 2025-01-06
+          quantity: "1"
+          proceeds: "-2"
+          cost_basis: "10"
+          realized_pnl: "-12"
+          proceeds_base: "-2"
+          cost_basis_base: "10"
+          realized_pnl_base: "-12"
+          currency: USD
+          fx_rate_to_base: "1"
+        - id: "sell-2:buy-1:0"
+          lot_id: buy-1
+          asset_id: pny
+          activity_id: sell-2
+          date: 2025-01-08
+          quantity: "1"
+          proceeds: "100"
+          cost_basis: "10"
+          realized_pnl: "90"
+          proceeds_base: "100"
+          cost_basis_base: "10"
+          realized_pnl_base: "90"
+          currency: USD
+          fx_rate_to_base: "1"
+      valuations:
+        - date: 2025-01-02
+          fx_rate_to_base: "1"
+          cash_balance: "1000"
+          investment_market_value: "0"
+          total_value: "1000"
+          cost_basis: "0"
+          book_basis: "1000"
+          net_contribution: "1000"
+          cash_balance_base: "1000"
+          investment_market_value_base: "0"
+          total_value_base: "1000"
+          cost_basis_base: "0"
+          book_basis_base: "1000"
+          net_contribution_base: "1000"
+          external_inflow_base: "0"
+          external_outflow_base: "0"
+          external_flow_source: NO_FLOW
+          performance_eligible_value_base: "1000"
+          value_status: complete
+          basis_status: notApplicable
+        - date: 2025-01-03
+          fx_rate_to_base: "1"
+          cash_balance: "980"
+          investment_market_value: "20"
+          total_value: "1000"
+          cost_basis: "20"
+          book_basis: "1000"
+          net_contribution: "1000"
+          cash_balance_base: "980"
+          investment_market_value_base: "20"
+          total_value_base: "1000"
+          cost_basis_base: "20"
+          book_basis_base: "1000"
+          net_contribution_base: "1000"
+          external_inflow_base: "0"
+          external_outflow_base: "0"
+          external_flow_source: NO_FLOW
+          performance_eligible_value_base: "1000"
+          value_status: complete
+          basis_status: complete
+        - date: 2025-01-04
+          fx_rate_to_base: "1"
+          cash_balance: "980"
+          investment_market_value: "20"
+          total_value: "1000"
+          cost_basis: "20"
+          book_basis: "1000"
+          net_contribution: "1000"
+          cash_balance_base: "980"
+          investment_market_value_base: "20"
+          total_value_base: "1000"
+          cost_basis_base: "20"
+          book_basis_base: "1000"
+          net_contribution_base: "1000"
+          external_inflow_base: "0"
+          external_outflow_base: "0"
+          external_flow_source: NO_FLOW
+          performance_eligible_value_base: "1000"
+          value_status: complete
+          basis_status: complete
+        - date: 2025-01-05
+          fx_rate_to_base: "1"
+          cash_balance: "980"
+          investment_market_value: "20"
+          total_value: "1000"
+          cost_basis: "20"
+          book_basis: "1000"
+          net_contribution: "1000"
+          cash_balance_base: "980"
+          investment_market_value_base: "20"
+          total_value_base: "1000"
+          cost_basis_base: "20"
+          book_basis_base: "1000"
+          net_contribution_base: "1000"
+          external_inflow_base: "0"
+          external_outflow_base: "0"
+          external_flow_source: NO_FLOW
+          performance_eligible_value_base: "1000"
+          value_status: complete
+          basis_status: complete
+        - date: 2025-01-06
+          fx_rate_to_base: "1"
+          cash_balance: "978"
+          investment_market_value: "10"
+          total_value: "988"
+          cost_basis: "10"
+          book_basis: "988"
+          net_contribution: "1000"
+          cash_balance_base: "978"
+          investment_market_value_base: "10"
+          total_value_base: "988"
+          cost_basis_base: "10"
+          book_basis_base: "988"
+          net_contribution_base: "1000"
+          external_inflow_base: "0"
+          external_outflow_base: "0"
+          external_flow_source: NO_FLOW
+          performance_eligible_value_base: "988"
+          value_status: complete
+          basis_status: complete
+        - date: 2025-01-07
+          fx_rate_to_base: "1"
+          cash_balance: "978"
+          investment_market_value: "10"
+          total_value: "988"
+          cost_basis: "10"
+          book_basis: "988"
+          net_contribution: "1000"
+          cash_balance_base: "978"
+          investment_market_value_base: "10"
+          total_value_base: "988"
+          cost_basis_base: "10"
+          book_basis_base: "988"
+          net_contribution_base: "1000"
+          external_inflow_base: "0"
+          external_outflow_base: "0"
+          external_flow_source: NO_FLOW
+          performance_eligible_value_base: "988"
+          value_status: complete
+          basis_status: complete
+        - date: 2025-01-08
+          fx_rate_to_base: "1"
+          cash_balance: "1078"
+          investment_market_value: "0"
+          total_value: "1078"
+          cost_basis: "0"
+          book_basis: "1078"
+          net_contribution: "1000"
+          cash_balance_base: "1078"
+          investment_market_value_base: "0"
+          total_value_base: "1078"
+          cost_basis_base: "0"
+          book_basis_base: "1078"
+          net_contribution_base: "1000"
+          external_inflow_base: "0"
+          external_outflow_base: "0"
+          external_flow_source: NO_FLOW
+          performance_eligible_value_base: "1078"
+          value_status: complete
+          basis_status: notApplicable
+        - date: 2025-01-09
+          fx_rate_to_base: "1"
+          cash_balance: "1078"
+          investment_market_value: "0"
+          total_value: "1078"
+          cost_basis: "0"
+          book_basis: "1078"
+          net_contribution: "1000"
+          cash_balance_base: "1078"
+          investment_market_value_base: "0"
+          total_value_base: "1078"
+          cost_basis_base: "0"
+          book_basis_base: "1078"
+          net_contribution_base: "1000"
+          external_inflow_base: "0"
+          external_outflow_base: "0"
+          external_flow_source: NO_FLOW
+          performance_eligible_value_base: "1078"
+          value_status: complete
+          basis_status: notApplicable
+        - date: 2025-01-10
+          fx_rate_to_base: "1"
+          cash_balance: "1078"
+          investment_market_value: "0"
+          total_value: "1078"
+          cost_basis: "0"
+          book_basis: "1078"
+          net_contribution: "1000"
+          cash_balance_base: "1078"
+          investment_market_value_base: "0"
+          total_value_base: "1078"
+          cost_basis_base: "0"
+          book_basis_base: "1078"
+          net_contribution_base: "1000"
+          external_inflow_base: "0"
+          external_outflow_base: "0"
+          external_flow_source: NO_FLOW
+          performance_eligible_value_base: "1078"
+          value_status: complete
+          basis_status: notApplicable
+      flows: []
+      performance:
+        all_time:
+          method: timeWeighted
+          period_start: 2025-01-02
+          period_end: 2025-01-10
+          returns:
+            twr: "0.078"
+            annualized_twr: ~
+            irr: "0.078"
+            annualized_irr: "29.84965405"
+            value_return: "0.078"
+            annualized_value_return: ~
+          attribution:
+            contributions: "1000"
+            distributions: "0"
+            income: "0"
+            realized_pnl: "102"
+            unrealized_pnl_change: "0"
+            fx_effect: "0"
+            fees: "24"
+            taxes: "0"
+            residual: "0"
+          risk:
+            volatility: "0.60612509"
+            max_drawdown: "-0.012"
+            peak_date: 2025-01-05
+            trough_date: 2025-01-06
+            recovery_date: 2025-01-08
+            drawdown_duration_days: 3
+          summary:
+            amount: "78"
+            percent: "0.078"
+            method: timeWeighted
+            basis: marketValue
+            quality: ok
+            amount_status: complete
+            percent_status: complete
+            basis_status: notApplicable
+          basis_status: notApplicable
+          quality: ok
+          is_holdings_mode: false
+          is_mixed_tracking_mode: false
+          series:
+            - date: 2025-01-02
+              value: "0"
+            - date: 2025-01-03
+              value: "0"
+            - date: 2025-01-04
+              value: "0"
+            - date: 2025-01-05
+              value: "0"
+            - date: 2025-01-06
+              value: "-0.012"
+            - date: 2025-01-07
+              value: "-0.012"
+            - date: 2025-01-08
+              value: "0.078"
+            - date: 2025-01-09
+              value: "0.078"
+            - date: 2025-01-10
+              value: "0.078"
+  portfolio:
+    all_time:
+      method: timeWeighted
+      period_start: 2025-01-02
+      period_end: 2025-01-10
+      returns:
+        twr: "0.078"
+        annualized_twr: ~
+        irr: "0.078"
+        annualized_irr: "29.84965405"
+        value_return: "0.078"
+        annualized_value_return: ~
+      attribution:
+        contributions: "1000"
+        distributions: "0"
+        income: "0"
+        realized_pnl: "102"
+        unrealized_pnl_change: "0"
+        fx_effect: "0"
+        fees: "24"
+        taxes: "0"
+        residual: "0"
+      risk:
+        volatility: "0.60612509"
+        max_drawdown: "-0.012"
+        peak_date: 2025-01-05
+        trough_date: 2025-01-06
+        recovery_date: 2025-01-08
+        drawdown_duration_days: 3
+      summary:
+        amount: "78"
+        percent: "0.078"
+        method: timeWeighted
+        basis: marketValue
+        quality: ok
+        amount_status: complete
+        percent_status: complete
+        basis_status: notApplicable
+      basis_status: notApplicable
+      quality: ok
+      is_holdings_mode: false
+      is_mixed_tracking_mode: false
+      series:
+        - date: 2025-01-02
+          value: "0"
+        - date: 2025-01-03
+          value: "0"
+        - date: 2025-01-04
+          value: "0"
+        - date: 2025-01-05
+          value: "0"
+        - date: 2025-01-06
+          value: "-0.012"
+        - date: 2025-01-07
+          value: "-0.012"
+        - date: 2025-01-08
+          value: "0.078"
+        - date: 2025-01-09
+          value: "0.078"
+        - date: 2025-01-10
+          value: "0.078"
+  portfolio_flows: []
+  diagnostics: []
+steps: []
