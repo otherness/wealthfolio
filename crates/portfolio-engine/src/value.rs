@@ -20,6 +20,9 @@ use crate::model::*;
 use crate::resolve::{FxResolver, ResolvedSurfaces};
 
 /// Decimal places legacy storage keeps; flow fallbacks diff at this scale.
+/// A quote carried at least this many days is reported once per asset.
+const CARRIED_QUOTE_INFO_DAYS: i64 = 7;
+
 const STORAGE_PRECISION: u32 = 8;
 
 /// Facts after the pure stages that need no projection: canonical facts,
@@ -113,6 +116,7 @@ pub fn value(inputs: &ValueInputs<'_>) -> BTreeMap<AccountId, ValuationSeries> {
             }
             days.push(valuer.value_day(&keyframes[active], day, None));
         }
+        valuer.report_carried_quotes();
 
         // Flows: activity map for this account's scope, then fallbacks, then
         // holdings-transition inference (authoritative on observed rows).
@@ -426,6 +430,8 @@ struct Valuer<'a> {
     account_currency: String,
     diagnostics: Vec<Diagnostic>,
     reported: BTreeSet<String>,
+    /// Longest carry seen per asset: (age in days, observation day, valued day).
+    carried: BTreeMap<AssetId, (i64, NaiveDate, NaiveDate)>,
 }
 
 impl<'a> Valuer<'a> {
@@ -447,6 +453,7 @@ impl<'a> Valuer<'a> {
             account_currency: policy.major_currency(account_currency.as_str()).to_string(),
             diagnostics: Vec::new(),
             reported: BTreeSet::new(),
+            carried: BTreeMap::new(),
         }
     }
 
@@ -455,6 +462,28 @@ impl<'a> Valuer<'a> {
             .facts
             .policy
             .major_currency(self.resolved.facts.policy.base_currency.as_str())
+    }
+
+    /// One informational diagnostic per asset whose quote was carried for
+    /// more than a week somewhere in the range: weekends and holidays stay
+    /// silent, a stale series is visible (I10) without a row per day.
+    fn report_carried_quotes(&mut self) {
+        let carried = std::mem::take(&mut self.carried);
+        for (asset, (age, observed, valued)) in carried {
+            if age < CARRIED_QUOTE_INFO_DAYS {
+                continue;
+            }
+            let key = format!("{}:{asset}", self.account);
+            if self.reported.insert(format!("CarriedQuote:{key}")) {
+                self.diagnostics.push(Diagnostic::info(
+                    DiagnosticCode::CarriedQuote,
+                    key,
+                    format!(
+                        "quote for {asset} carried up to {age} days (last observation {observed}, valued through {valued})"
+                    ),
+                ));
+            }
+        }
     }
 
     fn report(&mut self, code: DiagnosticCode, key: String, message: String) {
@@ -498,6 +527,16 @@ impl<'a> Valuer<'a> {
                 );
                 continue;
             };
+            let age = (day - quote.day).num_days();
+            if age > 0 {
+                let entry = self
+                    .carried
+                    .entry(asset.clone())
+                    .or_insert((0, quote.day, day));
+                if age > entry.0 {
+                    *entry = (age, quote.day, day);
+                }
+            }
             let (quote_major, factor) = policy.normalize_currency(quote.currency.as_str());
             let price = quote.close * factor;
             let rate = if quote_major == account_currency {

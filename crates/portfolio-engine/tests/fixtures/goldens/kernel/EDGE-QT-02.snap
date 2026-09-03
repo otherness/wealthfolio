@@ -218,7 +218,8 @@ baseline:
           total_value: "980"
           total_value_base: "980"
           value_status: complete
-  diagnostics: []
+  diagnostics:
+    - "value/acc-1:stale: Info CarriedQuote: quote for stale carried up to 60 days (last observation 2024-11-11, valued through 2025-01-10)"
   portfolio:
     all_time:
       attribution:

@@ -1708,7 +1708,8 @@ baseline:
           total_value: "1840"
           total_value_base: "1840"
           value_status: complete
-  diagnostics: []
+  diagnostics:
+    - "value/acc-a:aapl: Info CarriedQuote: quote for aapl carried up to 12 days (last observation 2025-03-12, valued through 2025-03-24)"
   portfolio:
     all_time:
       attribution:

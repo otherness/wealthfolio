@@ -526,7 +526,8 @@ baseline:
           total_value: "1409"
           total_value_base: "1409"
           value_status: complete
-  diagnostics: []
+  diagnostics:
+    - "value/acc-1:aapl-call: Info CarriedQuote: quote for aapl-call carried up to 7 days (last observation 2025-01-17, valued through 2025-01-24)"
   portfolio:
     all_time:
       attribution:
