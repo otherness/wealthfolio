@@ -1,26 +1,18 @@
 # Portfolio engine fixtures
 
 One scenario = one YAML file of **facts** under `scenarios/<family>/<ID>.yaml`.
-Outputs are goldens: `goldens/legacy/<ID>.snap` is the frozen answer of the
-pre-kernel pipeline (the oracle), `goldens/kernel/<ID>.snap` the engine's.
-`DIVERGENCES.md` itemizes every legacy≠kernel delta down to the field.
-
-The legacy goldens were captured at commit `d3056da2a` by a harness that only
-compiles against the legacy calculators, which the one-engine refactor deleted.
-That harness lives outside this repository (`legacy-oracle-capture/`, sources
-from commit `ac4da4edd` plus a git pack of the commits) and is the only way to
-regenerate or extend them; nothing in this tree rewrites `goldens/legacy/`.
+Outputs are goldens: `goldens/kernel/<ID>.snap`, reviewed insta snapshots of
+the engine. The legacy oracle goldens, the parity harness and the divergence
+ledger that proved the kernel against the previous pipeline were retired after
+sign-off (architecture §4.5); this repository's history keeps them.
 
 ## Running
 
 ```bash
 # kernel goldens (regenerate with INSTA_UPDATE=always after reviewing the diff)
 cargo test -p wealthfolio-portfolio-engine --test goldens
-# parity against the frozen legacy goldens, plus the ledger exactness check
-cargo test -p wealthfolio-portfolio-engine --test parity
 # property laws
 cargo test -p wealthfolio-portfolio-engine --test properties
-# coordinator: persistence of every parity scenario against the kernel golden,
 # freshness detection, and the lifecycle (LIFE) runner
 cargo test -p wealthfolio-core coordinator
 # one family or id-prefix list only (engine harnesses)
@@ -30,10 +22,10 @@ SCENARIO_FILTER=NOM-,EDGE-CCY cargo test -p wealthfolio-portfolio-engine
 ## Schema
 
 ```yaml
-id: NOM-TRADE-01            # stable catalog id (architecture §5)
+id: NOM-TRADE-01            # stable catalog id
 title: one line
 intent: >                   # what the scenario proves
-markers: [L]                # optional: L ledgered divergence, K kernel-only, S shell-level
+markers: [L]                # optional: L differed from the previous engine (architecture §4.5), K kernel-only, S shell-level
 policy:
   base_currency: USD
   timezone: UTC             # IANA name; default UTC
@@ -122,8 +114,6 @@ not-applicable reasons, failures) is never parity-gated. Decimals are strings at
 
 | Harness | Where | What it checks |
 | --- | --- | --- |
-| Legacy goldens | `goldens/legacy/` (frozen files) | Captured from the pre-kernel pipeline at commit `d3056da2a`; read by parity, regenerated only by the preserved external harness. |
-| Parity | `cargo test -p wealthfolio-portfolio-engine --test parity` | Kernel vs every legacy golden: keyframes, lots, disposals, valuations, account and portfolio flows, every performance window. Deltas must be itemized in `DIVERGENCES.md`; `ledger_is_exact_and_consistent` fails on a ledger path that matches nothing or an `[L]` marker without an entry. |
 | Kernel goldens | `cargo test -p wealthfolio-portfolio-engine --test goldens` | Kernel output for every non-shell scenario, under `goldens/kernel/`. |
 | Properties | `cargo test -p wealthfolio-portfolio-engine --test properties` | Determinism, chunk/replay equivalence, cash and lot conservation, split neutrality, transfer cancellation, an independent re-derivation of complete days from keyframes and surfaces, exact scope aggregation with ledger-classified transfer days, degradation reporting, override transparency, no panics under mutation. |
 | Coordinator | `cargo test -p wealthfolio-core coordinator` | Every parity scenario through the real fact loading, row mapping and persistence, compared field by field with the kernel golden; freshness (facts, market data by content, partner legs, a new day); per-account failures (invalid snapshot dates, unsupported cost basis); the LIFE lifecycle runner (each step's incremental projection, taken through the resume and revalue paths with a two-day checkpoint cadence, equals a fresh rebuild); the plan chosen for quote changes, new days, backdated edits, deletions, forced rebuilds and retried failures. |

@@ -1,6 +1,6 @@
 //! Shared support for the engine's fixture-driven tests: loads the scenario
 //! YAMLs owned by this crate into `RawFacts`, captures projection output in
-//! the legacy golden shape, and reads legacy goldens for parity diffs.
+//! the golden shape shared with the retired legacy oracle (architecture §4.5).
 
 #![allow(dead_code)]
 
@@ -232,10 +232,6 @@ pub struct ObservedPositionSpec {
 }
 
 impl Scenario {
-    pub fn is_parity_eligible(&self) -> bool {
-        !self.markers.iter().any(|m| m == "K" || m == "S")
-    }
-
     pub fn raw_facts(&self) -> RawFacts {
         let timezone: chrono_tz::Tz = self.policy.timezone.parse().expect("timezone");
         let policy = Policy::new(
@@ -840,137 +836,13 @@ pub fn performance_value(result: &PerformanceResult) -> Value {
     })
 }
 
-pub fn legacy_account_performance(golden: &Value, account: &str, label: &str) -> Option<Value> {
-    golden
-        .get("baseline")?
-        .get("accounts")?
-        .get(account)?
-        .get("performance")?
-        .get(label)
-        .cloned()
-}
-
-/// Number of frozen legacy goldens on disk.
-pub fn legacy_golden_count() -> usize {
-    std::fs::read_dir(fixtures_dir().join("goldens/legacy"))
-        .map(|dir| {
-            dir.filter_map(Result::ok)
-                .filter(|e| e.path().extension().is_some_and(|x| x == "snap"))
-                .count()
-        })
-        .unwrap_or(0)
-}
-
-pub fn legacy_portfolio_performance(golden: &Value, label: &str) -> Option<Value> {
-    golden
-        .get("baseline")?
-        .get("portfolio")?
-        .get(label)
-        .cloned()
-}
-
-// ------------------------------------------------------------ ledger
-
-#[derive(Debug, Clone, Deserialize)]
-pub struct LedgerEntry {
-    pub scenario: String,
-    /// Difference-path prefixes this entry sanctions (`acc-1.keyframes`).
-    pub paths: Vec<String>,
-    #[serde(default)]
-    pub legacy: String,
-    #[serde(default)]
-    pub kernel: String,
-    #[serde(default)]
-    pub rationale: String,
-    #[serde(default)]
-    pub signed: String,
-}
-
-/// Itemized deltas from the ```yaml block of DIVERGENCES.md.
-pub fn load_ledger() -> Vec<LedgerEntry> {
-    let text = std::fs::read_to_string(fixtures_dir().join("DIVERGENCES.md")).unwrap_or_default();
-    let Some(start) = text.find("```yaml\n") else {
-        return Vec::new();
-    };
-    let body = &text[start + "```yaml\n".len()..];
-    let end = body.find("```").unwrap_or(body.len());
-    serde_yaml::from_str(&body[..end]).expect("DIVERGENCES.md yaml block")
-}
-
-/// Splits differences into (unledgered, ledgered) for a scenario.
-pub fn apply_ledger(
-    scenario: &str,
-    differences: Vec<String>,
-    ledger: &[LedgerEntry],
-) -> (Vec<String>, Vec<String>) {
-    let prefixes: Vec<&str> = ledger
-        .iter()
-        .filter(|entry| entry.scenario == scenario)
-        .flat_map(|entry| entry.paths.iter().map(String::as_str))
-        .collect();
-    differences
-        .into_iter()
-        .partition(|difference| !prefixes.iter().any(|prefix| difference.starts_with(prefix)))
-}
-
-// ------------------------------------------------------- legacy goldens
-
-/// Parses `goldens/legacy/<id>.snap` (insta header stripped) into JSON.
-pub fn load_legacy_golden(id: &str) -> Option<Value> {
-    let path = fixtures_dir()
-        .join("goldens/legacy")
-        .join(format!("{id}.snap"));
-    let text = std::fs::read_to_string(path).ok()?;
-    let body = strip_insta_header(&text);
-    let yaml: serde_yaml::Value = serde_yaml::from_str(body).expect("golden yaml");
-    Some(serde_json::to_value(yaml).expect("yaml to json"))
-}
+// ------------------------------------------------------- golden sections
 
 fn strip_insta_header(text: &str) -> &str {
     let mut parts = text.splitn(3, "---\n");
     parts.next();
     parts.next();
     parts.next().unwrap_or(text)
-}
-
-pub fn legacy_valuation(golden: &Value, account: &str) -> Option<ValuationCapture> {
-    let account = golden.get("baseline")?.get("accounts")?.get(account)?;
-    let section = |name: &str| {
-        account
-            .get(name)
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default()
-    };
-    Some(ValuationCapture {
-        valuations: section("valuations"),
-        flows: section("flows"),
-    })
-}
-
-pub fn legacy_portfolio_flows(golden: &Value) -> Vec<Value> {
-    golden
-        .get("baseline")
-        .and_then(|b| b.get("portfolio_flows"))
-        .and_then(Value::as_array)
-        .cloned()
-        .unwrap_or_default()
-}
-
-pub fn legacy_projection(golden: &Value, account: &str) -> Option<ProjectionCapture> {
-    let account = golden.get("baseline")?.get("accounts")?.get(account)?;
-    let section = |name: &str| {
-        account
-            .get(name)
-            .and_then(Value::as_array)
-            .cloned()
-            .unwrap_or_default()
-    };
-    Some(ProjectionCapture {
-        keyframes: section("keyframes"),
-        lots: section("lots"),
-        disposals: section("disposals"),
-    })
 }
 
 /// Paths where two JSON trees differ (`path: left != right`).
