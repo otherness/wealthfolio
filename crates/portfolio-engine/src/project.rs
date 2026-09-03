@@ -10,7 +10,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 
-use chrono::{DateTime, NaiveDate, Utc};
+use chrono::NaiveDate;
 use rust_decimal::Decimal;
 
 use crate::compile::CompiledLedger;
@@ -542,7 +542,7 @@ impl Projector<'_> {
 
         let account_currency = state.currency.clone();
         let account_id = state.account.clone();
-        let position = self.position_mut(state, asset, &info, event.timestamp);
+        let position = self.position_mut(state, asset, &info, event);
         let position_currency = position.currency.clone();
         let gross_abs = event
             .cash
@@ -701,7 +701,7 @@ impl Projector<'_> {
             .unwrap_or(Decimal::ZERO);
 
         if info.allows_negative_lots && (!info.requires_explicit_short_intent || open_short) {
-            let position = self.position_mut(state, asset, &info, event.timestamp);
+            let position = self.position_mut(state, asset, &info, event);
             let position_currency = position.currency.clone();
             let gross_abs = event
                 .cash
@@ -825,7 +825,7 @@ impl Projector<'_> {
         let account_currency = state.currency.clone();
         let account_id = state.account.clone();
         let base = self.base().to_string();
-        let position = self.position_mut(state, asset, &info, event.timestamp);
+        let position = self.position_mut(state, asset, &info, event);
         let position_currency = position.currency.clone();
         let cached = group.and_then(|g| cache.get(g).cloned());
 
@@ -1173,14 +1173,20 @@ impl Projector<'_> {
         state: &'s mut AccountState,
         asset: &AssetId,
         info: &AssetFacts,
-        when: DateTime<Utc>,
+        opened_by: &EconomicEvent,
     ) -> &'s mut Position {
+        let when = opened_by.timestamp;
         state
             .positions
             .entry(asset.clone())
             .or_insert_with(|| Position {
                 asset: asset.clone(),
-                currency: info.quote_currency.clone(),
+                // An asset without a quote currency is priced in the currency
+                // of the activity that opens the position.
+                currency: info
+                    .quote_currency
+                    .clone()
+                    .unwrap_or_else(|| opened_by.currency.clone()),
                 quantity: Decimal::ZERO,
                 average_cost: Decimal::ZERO,
                 total_cost_basis: Decimal::ZERO,

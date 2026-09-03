@@ -81,10 +81,13 @@ pub fn facts_needed(facts: &CanonicalFacts, scope: &[AccountId], range: DateRang
         }
     }
     for asset in assets.iter().filter_map(|id| facts.assets.get(id)) {
+        let Some(quote_currency) = &asset.quote_currency else {
+            continue;
+        };
         for account in accounts.iter().filter_map(|id| facts.accounts.get(id)) {
-            pair(asset.quote_currency.as_str(), account.currency.as_str());
+            pair(quote_currency.as_str(), account.currency.as_str());
         }
-        pair(asset.quote_currency.as_str(), &base);
+        pair(quote_currency.as_str(), &base);
     }
 
     FactsRequest {

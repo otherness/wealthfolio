@@ -473,7 +473,9 @@ product shows when the inputs are imperfect.
   distributions, which are known, are still reported.
 - **An empty currency is not a bucket key.** A row whose currency is missing is
   computed in the account currency with a diagnostic, rather than accumulating
-  in an unnamed bucket that no rate can ever convert.
+  in an unnamed bucket that no rate can ever convert. An asset without a quote
+  currency stays unknown: its positions take the currency of the activity that
+  opens them and its quotes need an explicit currency, never a default.
 - **Archiving is a scope boundary.** An archived account is outside the tracked
   portfolio, so transfers to it are external outflows and transfers from it are
   external inflows, priced like any other flow. Pairing still resolves, so the

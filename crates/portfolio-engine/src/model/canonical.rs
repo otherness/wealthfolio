@@ -53,7 +53,9 @@ pub struct AccountFacts {
 pub struct AssetFacts {
     pub id: AssetId,
     /// May be a minor-unit code (`GBp`); the policy table normalizes it.
-    pub quote_currency: Currency,
+    /// `None` when the asset row carries no currency: positions then take
+    /// the currency of the activity that opens them, never a default.
+    pub quote_currency: Option<Currency>,
     /// Alternative assets (property, vehicles, …) are net-worth only.
     pub alternative: bool,
     #[serde(with = "crate::model::decimal_serde")]
@@ -70,7 +72,7 @@ impl AssetFacts {
     pub fn fallback(id: AssetId, currency: Currency) -> Self {
         Self {
             id,
-            quote_currency: currency,
+            quote_currency: Some(currency),
             alternative: false,
             contract_multiplier: Decimal::ONE,
             allows_negative_lots: false,

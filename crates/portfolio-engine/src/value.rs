@@ -337,7 +337,7 @@ fn keyframes_for(
                             currency: position
                                 .currency
                                 .clone()
-                                .or_else(|| facts.map(|a| a.quote_currency.clone()))
+                                .or_else(|| facts.and_then(|a| a.quote_currency.clone()))
                                 .unwrap_or_else(|| account.currency.clone()),
                             alternative: facts.is_some_and(|a| a.alternative),
                             contract_multiplier: facts

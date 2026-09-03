@@ -50,7 +50,7 @@ pub fn normalize(raw: RawFacts) -> Result<Normalized, EngineError> {
     let mut assets = BTreeMap::new();
     for asset in raw.assets {
         let id = AssetId::new(asset.id.clone());
-        let facts = asset_facts(&id, &asset);
+        let facts = asset_facts(&id, &asset, &mut diagnostics);
         if assets.insert(id, facts).is_some() {
             return Err(EngineError::DuplicateAssetId(asset.id));
         }
@@ -100,7 +100,7 @@ pub fn normalize(raw: RawFacts) -> Result<Normalized, EngineError> {
     for quote in raw.quotes {
         let asset = AssetId::new(quote.asset_id.clone());
         let currency = Currency::parse(&quote.currency)
-            .or_else(|| assets.get(&asset).map(|a| a.quote_currency.clone()));
+            .or_else(|| assets.get(&asset).and_then(|a| a.quote_currency.clone()));
         let Some(currency) = currency else {
             diagnostics.push(Diagnostic::warning(
                 DiagnosticCode::MissingCurrency,
@@ -229,7 +229,7 @@ fn tracking_mode(raw: &str) -> TrackingMode {
     }
 }
 
-fn asset_facts(id: &AssetId, asset: &RawAsset) -> AssetFacts {
+fn asset_facts(id: &AssetId, asset: &RawAsset, diagnostics: &mut Vec<Diagnostic>) -> AssetFacts {
     let kind = asset.kind.trim().to_ascii_uppercase();
     let instrument = asset
         .instrument_type
@@ -250,12 +250,17 @@ fn asset_facts(id: &AssetId, asset: &RawAsset) -> AssetFacts {
         } else {
             Decimal::ONE
         });
+    let quote_currency = Currency::parse(&asset.quote_currency);
+    if quote_currency.is_none() {
+        diagnostics.push(Diagnostic::warning(
+            DiagnosticCode::MissingCurrency,
+            id.as_str().to_string(),
+            "asset has no quote currency; its positions take the currency of the activity that opens them and its quotes need an explicit currency",
+        ));
+    }
     AssetFacts {
         id: id.clone(),
-        // An empty quote currency is preserved as "unknown" by falling back
-        // to the activity currency at use sites (legacy behavior).
-        quote_currency: Currency::parse(&asset.quote_currency)
-            .unwrap_or_else(|| Currency::parse("USD").expect("non-empty")),
+        quote_currency,
         alternative,
         contract_multiplier,
         allows_negative_lots: is_option || equity_like,
