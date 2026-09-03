@@ -127,7 +127,17 @@ pub fn normalize(raw: RawFacts) -> Result<Normalized, EngineError> {
             source: quote.source,
         });
     }
-    quotes.sort_by(|a, b| a.asset.cmp(&b.asset).then_with(|| a.day.cmp(&b.day)));
+    // One observation per asset and day. Several sources may quote the same
+    // day (the store is unique on asset, day and source); the winner is
+    // decided by source rank, then source name, never by input order.
+    quotes.sort_by(|a, b| {
+        a.asset
+            .cmp(&b.asset)
+            .then_with(|| a.day.cmp(&b.day))
+            .then_with(|| source_rank(&a.source).cmp(&source_rank(&b.source)))
+            .then_with(|| a.source.cmp(&b.source))
+    });
+    quotes.dedup_by(|later, earlier| later.asset == earlier.asset && later.day == earlier.day);
 
     let mut fx_rates = Vec::with_capacity(raw.fx_rates.len());
     for rate in raw.fx_rates {
@@ -245,6 +255,16 @@ fn tracking_mode(raw: &str) -> TrackingMode {
         "HOLDINGS" => TrackingMode::Holdings,
         "TRANSACTIONS" => TrackingMode::Transactions,
         _ => TrackingMode::NotSet,
+    }
+}
+
+/// Same-day quote precedence: a manual price is an explicit override, a
+/// provider price is the reference, a broker trade price is the fallback.
+fn source_rank(source: &str) -> u8 {
+    match source.trim().to_ascii_uppercase().as_str() {
+        "MANUAL" => 0,
+        "BROKER" => 2,
+        _ => 1,
     }
 }
 

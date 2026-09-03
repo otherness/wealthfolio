@@ -525,6 +525,9 @@ Testable contract; the property suite (§5) encodes each one.
 - Composite legs preserve their order: the income leg precedes the buy leg.
 - Every ordering, pairing, expansion and detection rule keys on the
   **effective** activity type, so an override is honoured everywhere or nowhere.
+- One quote per asset and day: when several sources quote the same day, the
+  manual price wins, then a provider's, then a broker's, then the source name,
+  so the input order of rows never decides a valuation.
 - Iteration in any output-affecting path uses ordered maps. FX paths are chosen
   by fewest hops, then lexicographic currency codes, so equal-length
   triangulations never resolve by hash order.

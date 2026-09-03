@@ -72,6 +72,7 @@ activities:
     updated_at: 2025-01-02T10:00:00Z  # default: date
 quotes:
   - { asset: aapl, day: 2025-01-02, close: 100, currency: USD, source: MANUAL }
+                            # same day, several sources: MANUAL wins, then providers, then BROKER
 fx_rates:
   - { from: USD, to: CAD, day: 2025-01-02, rate: 1.35 }
 observed_snapshots:         # holdings-mode facts (never rebuilt)
