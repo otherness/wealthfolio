@@ -782,6 +782,67 @@ async fn a_backdated_edit_resumes_from_the_last_checkpoint() {
 }
 
 #[tokio::test]
+async fn a_resume_does_not_backfill_rows_before_an_account_existed() {
+    // A checkpoint carries an entry for every account the fold covered,
+    // including accounts that held nothing yet. Seeding a valuation keyframe
+    // from such an empty entry emitted zero-value rows for every day between
+    // the checkpoint and the account's first activity, so a resumed run no
+    // longer matched a fold from genesis.
+    let scenario = scenario("NOM-TRADE-01");
+    let mut facts = scenario.facts();
+    let mut late_account = facts.accounts[0].clone();
+    late_account.id = "acc-late".to_string();
+    late_account.name = "Opened later".to_string();
+    facts.accounts.push(late_account);
+
+    let opened_on = facts.as_of;
+    let mut deposit = facts.activities[0].clone();
+    deposit.id = "late-deposit".to_string();
+    deposit.account_id = "acc-late".to_string();
+    deposit.activity_type = "DEPOSIT".to_string();
+    deposit.asset_id = None;
+    deposit.quantity = None;
+    deposit.unit_price = None;
+    deposit.amount = Some(rust_decimal_macros::dec!(500));
+    deposit.activity_date = as_of_instant(opened_on, &facts.timezone);
+    facts.activities.push(deposit);
+
+    let harness = harness(facts.clone()).await;
+    let loaded = facts::load(
+        &harness.sources,
+        &["acc-late".to_string()],
+        &facts.base_currency,
+        &facts.timezone,
+        facts.as_of,
+    )
+    .unwrap();
+
+    // Resume from a day well before the account opened, holding nothing.
+    let resume_day = opened_on - chrono::Duration::days(5);
+    let resume = engine::model::ProjectionState {
+        date: resume_day,
+        accounts: std::collections::BTreeMap::from([(
+            engine::model::AccountId::new("acc-late"),
+            engine::model::AccountState::empty(
+                engine::model::AccountId::new("acc-late"),
+                engine::model::Currency::parse(&facts.base_currency).unwrap(),
+            ),
+        )]),
+        transfer_cache: Default::default(),
+    };
+    let resumed = persist::compute(&loaded, Some(resume), CheckpointCadence::EveryDays(2)).unwrap();
+    let series = resumed
+        .series
+        .get(&engine::model::AccountId::new("acc-late"))
+        .expect("the late account is valued");
+    let first_valued = series.days.first().expect("at least one day").date;
+    assert_eq!(
+        first_valued, opened_on,
+        "valuation starts on the account's first activity, not at the resume point {resume_day}"
+    );
+}
+
+#[tokio::test]
 async fn a_deletion_rebuilds_fully_unless_the_change_is_dated() {
     let scenario = scenario("NOM-TRADE-01");
     let facts = scenario.facts();

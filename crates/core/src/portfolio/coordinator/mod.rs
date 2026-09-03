@@ -576,8 +576,14 @@ impl PortfolioCoordinator {
                             }
                             Ok(_) if is_holdings => RebuildPlan::Revalue,
                             Ok(fingerprint) => {
-                                match earliest_changed_day(loaded, &fingerprint, current, hint, tz)
-                                {
+                                match earliest_changed_day(
+                                    loaded,
+                                    account_id,
+                                    &fingerprint,
+                                    current,
+                                    hint,
+                                    tz,
+                                ) {
                                     Some(day) => {
                                         earliest_change =
                                             Some(earliest_change.map_or(day, |d| d.min(day)));
@@ -764,6 +770,7 @@ impl PortfolioCoordinator {
 /// which means a full fold.
 fn earliest_changed_day(
     loaded: &LoadedFacts,
+    account_id: &str,
     recorded: &AccountFingerprint,
     current: &AccountFingerprint,
     hint: Option<NaiveDate>,
@@ -777,10 +784,26 @@ fn earliest_changed_day(
     let last_seen = recorded
         .activities_updated_at
         .max(recorded.partner_activities_updated_at);
+    // Only this account's own rows and its transfer counterparties count: an
+    // unrelated account's freshly touched old row must not drag this
+    // account's resume point back to the start of its history.
+    let own_groups: BTreeSet<&str> = loaded
+        .raw
+        .activities
+        .iter()
+        .filter(|a| a.account_id == account_id)
+        .filter_map(|a| a.source_group_id.as_deref())
+        .collect();
     let edited = loaded
         .raw
         .activities
         .iter()
+        .filter(|a| {
+            a.account_id == account_id
+                || a.source_group_id
+                    .as_deref()
+                    .is_some_and(|g| own_groups.contains(g))
+        })
         .filter(|a| last_seen.is_none_or(|seen| a.updated_at > seen))
         .map(|a| a.timestamp.with_timezone(&tz).date_naive())
         .min();

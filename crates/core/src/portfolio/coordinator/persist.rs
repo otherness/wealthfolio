@@ -188,6 +188,13 @@ pub fn compute(
     let mut value_bundle = bundle.clone();
     if let Some(resumed) = &resume {
         for (account, state) in &resumed.accounts {
+            // An account that held nothing at the checkpoint has no history
+            // to carry: its first valuation row must come from its first
+            // event, exactly as in a fold from genesis. Seeding a keyframe
+            // here would emit zero-valued rows before the account existed.
+            if is_empty_state(state) {
+                continue;
+            }
             value_bundle
                 .keyframes
                 .entry(account.clone())
@@ -223,6 +230,16 @@ pub fn compute(
         since,
         checkpoints,
     })
+}
+
+/// Nothing held, owed or contributed yet: the account did not exist as far
+/// as valuation is concerned.
+fn is_empty_state(state: &AccountState) -> bool {
+    state.positions.is_empty()
+        && state.cash.values().all(|amount| amount.is_zero())
+        && state.cost_basis.is_zero()
+        && state.net_contribution.is_zero()
+        && state.net_contribution_base.is_zero()
 }
 
 /// The closure state at `date` rebuilt from the stored checkpoints of the
