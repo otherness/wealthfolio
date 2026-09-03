@@ -32,14 +32,23 @@ pub fn facts_needed(facts: &CanonicalFacts, scope: &[AccountId], range: DateRang
         .major_currency(policy.base_currency.as_str())
         .to_string();
 
+    // Transfer closure, transitively: every account sharing a pair with an
+    // account already in the closure, until no new account appears. A fold
+    // must cover the whole chain (A -> B -> C) or B's second pair has one leg.
     let mut accounts: BTreeSet<AccountId> = scope.iter().cloned().collect();
-    for activity in &facts.activities {
-        if !scope.contains(&activity.account) {
-            continue;
+    loop {
+        let before = accounts.len();
+        for activity in &facts.activities {
+            if !accounts.contains(&activity.account) {
+                continue;
+            }
+            if let Some(pair) = facts.transfer_pairs.pair_for(&activity.id) {
+                accounts.insert(pair.out_account.clone());
+                accounts.insert(pair.in_account.clone());
+            }
         }
-        if let Some(pair) = facts.transfer_pairs.pair_for(&activity.id) {
-            accounts.insert(pair.out_account.clone());
-            accounts.insert(pair.in_account.clone());
+        if accounts.len() == before {
+            break;
         }
     }
 
@@ -95,5 +104,90 @@ pub fn facts_needed(facts: &CanonicalFacts, scope: &[AccountId], range: DateRang
         assets,
         currency_pairs,
         range,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::{NaiveDate, TimeZone, Utc};
+    use rust_decimal_macros::dec;
+
+    use super::*;
+    use crate::model::{Policy, RawAccount, RawActivity, RawFacts};
+    use crate::normalize::normalize;
+
+    fn account(id: &str) -> RawAccount {
+        RawAccount {
+            id: id.into(),
+            currency: "USD".into(),
+            account_type: "SECURITIES".into(),
+            tracking_mode: "TRANSACTIONS".into(),
+            is_archived: false,
+        }
+    }
+
+    fn transfer(id: &str, account: &str, kind: &str, group: &str, day: u32) -> RawActivity {
+        let at = Utc.with_ymd_and_hms(2025, 1, day, 12, 0, 0).unwrap();
+        RawActivity {
+            id: id.into(),
+            account_id: account.into(),
+            asset_id: None,
+            activity_type: kind.into(),
+            activity_type_override: None,
+            subtype: None,
+            status: "POSTED".into(),
+            timestamp: at,
+            created_at: at,
+            quantity: None,
+            unit_price: None,
+            amount: Some(dec!(100)),
+            fee: None,
+            tax: None,
+            currency: "USD".into(),
+            fx_rate: None,
+            source_group_id: Some(group.into()),
+            external_transfer: None,
+            source_system: None,
+            is_user_modified: false,
+            updated_at: at,
+        }
+    }
+
+    #[test]
+    fn the_transfer_closure_is_transitive() {
+        // A -> B (g1) then B -> C (g2): a fold scoped to A must load C too.
+        let raw = RawFacts {
+            policy: Policy::new(
+                Currency::parse("USD").unwrap(),
+                chrono_tz::UTC,
+                NaiveDate::from_ymd_opt(2025, 1, 31).unwrap(),
+            ),
+            accounts: vec![account("a"), account("b"), account("c"), account("d")],
+            assets: vec![],
+            activities: vec![
+                transfer("out-1", "a", "TRANSFER_OUT", "g1", 2),
+                transfer("in-1", "b", "TRANSFER_IN", "g1", 2),
+                transfer("out-2", "b", "TRANSFER_OUT", "g2", 5),
+                transfer("in-2", "c", "TRANSFER_IN", "g2", 5),
+            ],
+            quotes: vec![],
+            fx_rates: vec![],
+            observed_snapshots: vec![],
+        };
+        let facts = normalize(raw).unwrap().facts;
+        let request = facts_needed(
+            &facts,
+            &[AccountId::new("a")],
+            DateRange {
+                start: NaiveDate::from_ymd_opt(2025, 1, 1).unwrap(),
+                end: NaiveDate::from_ymd_opt(2025, 1, 31).unwrap(),
+            },
+        );
+        let closure: Vec<&str> = request.accounts.iter().map(|a| a.as_str()).collect();
+        assert_eq!(
+            closure,
+            vec!["a", "b", "c"],
+            "d shares no pair and stays out"
+        );
     }
 }
