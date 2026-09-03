@@ -4,6 +4,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use chrono::NaiveDate;
+use rust_decimal::Decimal;
 use wealthfolio_portfolio_engine::model::{
     Currency, Policy, RawAccount, RawActivity, RawAsset, RawFacts, RawFxRate, RawObservedPosition,
     RawObservedSnapshot, RawQuote,
@@ -330,27 +331,34 @@ pub fn load(
                 invalid_snapshot_dates.push((account.id.clone(), snapshot.snapshot_date));
                 continue;
             }
+            // Positions and cash come out of hash maps: sort them so the
+            // loaded facts (and the fingerprint computed over them) do not
+            // depend on map iteration order, which differs per load.
+            let mut positions: Vec<RawObservedPosition> = snapshot
+                .positions
+                .values()
+                .map(|p| RawObservedPosition {
+                    asset_id: p.asset_id.clone(),
+                    currency: p.currency.clone(),
+                    quantity: p.quantity,
+                    average_cost: p.average_cost,
+                    total_cost_basis: p.total_cost_basis,
+                    cost_basis_account: p.cost_basis_account,
+                    cost_basis_base: p.cost_basis_base,
+                })
+                .collect();
+            positions.sort_by(|a, b| a.asset_id.cmp(&b.asset_id));
+            let mut cash: Vec<(String, Decimal)> = snapshot
+                .cash_balances
+                .iter()
+                .map(|(c, a)| (c.clone(), *a))
+                .collect();
+            cash.sort_by(|a, b| a.0.cmp(&b.0));
             observed_snapshots.push(RawObservedSnapshot {
                 account_id: snapshot.account_id.clone(),
                 date: snapshot.snapshot_date,
-                positions: snapshot
-                    .positions
-                    .values()
-                    .map(|p| RawObservedPosition {
-                        asset_id: p.asset_id.clone(),
-                        currency: p.currency.clone(),
-                        quantity: p.quantity,
-                        average_cost: p.average_cost,
-                        total_cost_basis: p.total_cost_basis,
-                        cost_basis_account: p.cost_basis_account,
-                        cost_basis_base: p.cost_basis_base,
-                    })
-                    .collect(),
-                cash: snapshot
-                    .cash_balances
-                    .iter()
-                    .map(|(c, a)| (c.clone(), *a))
-                    .collect(),
+                positions,
+                cash,
                 cost_basis: snapshot.cost_basis,
                 net_contribution: snapshot.net_contribution,
                 net_contribution_base: snapshot.net_contribution_base,

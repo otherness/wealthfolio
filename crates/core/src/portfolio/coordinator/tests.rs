@@ -26,6 +26,7 @@ struct Harness {
     fx_repo: Arc<InMemoryFxRepository>,
     valuation_repo: Arc<dyn ValuationRepositoryTrait>,
     snapshot_repo: Arc<dyn SnapshotRepositoryTrait>,
+    sources: FactSources,
     lot_repo: Arc<dyn LotRepositoryTrait>,
     projections: Arc<dyn ProjectionStoreTrait>,
     store: Arc<InMemoryProjectionStore>,
@@ -87,17 +88,18 @@ async fn harness(facts: ScenarioFacts) -> Harness {
         valuation_repo.clone(),
     ));
     let projections: Arc<dyn ProjectionStoreTrait> = store.clone();
+    let sources = FactSources {
+        accounts: account_repo_dyn,
+        activities: activity_repo_dyn,
+        assets: asset_repo,
+        quotes: quote_service_dyn,
+        fx_rates: fx_repo_dyn,
+        snapshots: snapshot_repo.clone(),
+    };
     let coordinator = PortfolioCoordinator::new(CoordinatorDeps {
         base_currency,
         timezone,
-        sources: FactSources {
-            accounts: account_repo_dyn,
-            activities: activity_repo_dyn,
-            assets: asset_repo,
-            quotes: quote_service_dyn,
-            fx_rates: fx_repo_dyn,
-            snapshots: snapshot_repo.clone(),
-        },
+        sources: sources.clone(),
         fx_service,
         snapshot_service,
         projections: projections.clone(),
@@ -120,6 +122,7 @@ async fn harness(facts: ScenarioFacts) -> Harness {
         lot_repo,
         projections,
         store,
+        sources,
         _clock: clock,
     }
 }
@@ -1137,6 +1140,99 @@ async fn explicitly_requested_archived_accounts_are_rebuilt() {
             .unwrap()
             .len(),
         1
+    );
+}
+
+#[tokio::test]
+async fn observed_snapshot_facts_are_ordered_so_the_fingerprint_is_stable() {
+    // Snapshot positions and cash live in hash maps, whose iteration order
+    // differs per load. Unsorted, an account with an observed snapshot never
+    // matched its own watermark: it was reported stale and rebuilt forever.
+    let scenario = scenario("NOM-OBS-01");
+    let facts = scenario.facts();
+    let account = facts
+        .accounts
+        .iter()
+        .find(|a| a.tracking_mode == crate::accounts::TrackingMode::Holdings)
+        .expect("holdings account")
+        .id
+        .clone();
+    let harness = harness(facts).await;
+
+    // Two positions and two cash buckets, inserted in reverse order.
+    let mut snapshot = manual_snapshot(
+        &account,
+        chrono::NaiveDate::from_ymd_opt(2025, 1, 6).unwrap(),
+    );
+    // Six assets inserted out of order: an unsorted load would have to hit
+    // the sorted permutation by chance (1 in 720) for this to pass.
+    for asset in ["zzz", "mmm", "aaa", "ttt", "ccc", "ppp"] {
+        snapshot.positions.insert(
+            asset.to_string(),
+            crate::portfolio::snapshot::Position {
+                id: format!("{account}-{asset}"),
+                account_id: account.clone(),
+                asset_id: asset.to_string(),
+                quantity: rust_decimal_macros::dec!(1),
+                average_cost: rust_decimal_macros::dec!(10),
+                total_cost_basis: rust_decimal_macros::dec!(10),
+                currency: "USD".to_string(),
+                ..Default::default()
+            },
+        );
+    }
+    snapshot
+        .cash_balances
+        .insert("USD".into(), rust_decimal_macros::dec!(5));
+    snapshot
+        .cash_balances
+        .insert("CAD".into(), rust_decimal_macros::dec!(7));
+    harness
+        .snapshot_repo
+        .save_snapshots(&[snapshot])
+        .await
+        .unwrap();
+
+    let loaded = facts::load(
+        &harness.sources,
+        std::slice::from_ref(&account),
+        "USD",
+        "UTC",
+        chrono::NaiveDate::from_ymd_opt(2025, 1, 12).unwrap(),
+    )
+    .unwrap();
+    let observed = loaded
+        .raw
+        .observed_snapshots
+        .iter()
+        .find(|s| s.positions.len() == 6)
+        .expect("the six-position snapshot");
+    let assets: Vec<&str> = observed
+        .positions
+        .iter()
+        .map(|p| p.asset_id.as_str())
+        .collect();
+    assert_eq!(
+        assets,
+        vec!["aaa", "ccc", "mmm", "ppp", "ttt", "zzz"],
+        "positions sorted by asset"
+    );
+    let currencies: Vec<&str> = observed.cash.iter().map(|(c, _)| c.as_str()).collect();
+    assert_eq!(currencies, vec!["CAD", "USD"], "cash sorted by currency");
+
+    // The fingerprint a job stores must equal the one the next check computes.
+    let again = facts::load(
+        &harness.sources,
+        std::slice::from_ref(&account),
+        "USD",
+        "UTC",
+        chrono::NaiveDate::from_ymd_opt(2025, 1, 12).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        loaded.fingerprints.get(&account),
+        again.fingerprints.get(&account),
+        "the same facts must fingerprint the same on every load"
     );
 }
 
