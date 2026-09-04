@@ -255,7 +255,9 @@ impl ActivityEconomicsResolver {
         }
 
         let tax = inputs.tax.unwrap_or(Decimal::ZERO).abs();
-        let charges = fee + tax;
+        // `None` when the two charges cannot be totalled; the gross derivation
+        // below is the only consumer, and it already models having no gross.
+        let charges = fee.checked_add(tax);
         let expected_effect = Self::calculate_trade_cash_effect(inputs)
             .or_else(|| Self::calculate_standalone_charge_amount(inputs).map(|amount| -amount));
         let final_amount = inputs.amount.map(|amount| amount.abs());
@@ -289,15 +291,19 @@ impl ActivityEconomicsResolver {
         });
 
         let gross_amount = signed_cash_effect.and_then(|signed_final| {
+            // Negation is always representable: `Decimal::MIN` is exactly
+            // `-Decimal::MAX`. Adding the charges back on is not.
             let gross = match inputs.activity_type {
-                ACTIVITY_TYPE_BUY => -signed_final - charges,
+                ACTIVITY_TYPE_BUY => (-signed_final).checked_sub(charges?)?,
                 ACTIVITY_TYPE_SELL
                 | ACTIVITY_TYPE_DEPOSIT
                 | ACTIVITY_TYPE_DIVIDEND
                 | ACTIVITY_TYPE_INTEREST
                 | ACTIVITY_TYPE_CREDIT
-                | ACTIVITY_TYPE_TRANSFER_IN => signed_final + charges,
-                ACTIVITY_TYPE_WITHDRAWAL | ACTIVITY_TYPE_TRANSFER_OUT => -signed_final - charges,
+                | ACTIVITY_TYPE_TRANSFER_IN => signed_final.checked_add(charges?)?,
+                ACTIVITY_TYPE_WITHDRAWAL | ACTIVITY_TYPE_TRANSFER_OUT => {
+                    (-signed_final).checked_sub(charges?)?
+                }
                 ACTIVITY_TYPE_FEE | ACTIVITY_TYPE_TAX => final_amount?,
                 _ => return None,
             };
@@ -356,8 +362,10 @@ impl ActivityEconomicsResolver {
             return None;
         }
 
-        let gross =
-            quantity?.abs() * unit_price?.abs() * Self::valid_unit_multiplier(unit_multiplier);
+        let gross = quantity?
+            .abs()
+            .checked_mul(unit_price?.abs())?
+            .checked_mul(Self::valid_unit_multiplier(unit_multiplier))?;
         (!gross.is_zero()).then_some(gross)
     }
 
@@ -374,9 +382,17 @@ impl ActivityEconomicsResolver {
         Self::cash_effect_from_trade_gross(inputs.activity_type, gross, fee, tax)
     }
 
+    /// `None` when the row carries no quantity or price, and equally when their
+    /// product cannot be represented: `rust_decimal` panics on overflow rather
+    /// than saturating, and a figure we cannot compute is not one to derive
+    /// cash from.
     pub(crate) fn derived_positive_gross(inputs: ActivityCashInputs<'_>) -> Option<Decimal> {
         let multiplier = Self::valid_unit_multiplier(inputs.unit_multiplier);
-        let gross = inputs.quantity?.abs() * inputs.unit_price?.abs() * multiplier;
+        let gross = inputs
+            .quantity?
+            .abs()
+            .checked_mul(inputs.unit_price?.abs())?
+            .checked_mul(multiplier)?;
         (gross > Decimal::ZERO).then_some(gross)
     }
 
@@ -386,10 +402,10 @@ impl ActivityEconomicsResolver {
         fee: Decimal,
         tax: Decimal,
     ) -> Option<Decimal> {
-        let charges = fee.abs() + tax.abs();
+        let charges = fee.abs().checked_add(tax.abs())?;
         match activity_type {
-            ACTIVITY_TYPE_BUY => Some(-(gross.abs() + charges)),
-            ACTIVITY_TYPE_SELL => Some(gross.abs() - charges),
+            ACTIVITY_TYPE_BUY => gross.abs().checked_add(charges).map(|total| -total),
+            ACTIVITY_TYPE_SELL => gross.abs().checked_sub(charges),
             _ => None,
         }
     }
@@ -471,8 +487,15 @@ impl ActivityEconomicsResolver {
             if let Some(quote) = quote {
                 let (normalized_price, normalized_currency) =
                     normalize_amount(quote.close, &quote.currency);
-                let market_value = activity.qty() * normalized_price * unit_multiplier;
-                if !market_value.is_zero() {
+                // An unrepresentable product is as unusable as a zero one, and
+                // takes the same route: the fallbacks below, which already
+                // exist for a transfer with no quote.
+                let market_value = activity
+                    .qty()
+                    .checked_mul(normalized_price)
+                    .and_then(|value| value.checked_mul(unit_multiplier))
+                    .filter(|value| !value.is_zero());
+                if let Some(market_value) = market_value {
                     return ResolvedActivityEconomics {
                         kind,
                         lot_cost_basis_value,
@@ -630,9 +653,11 @@ impl ActivityEconomicsResolver {
         unit_multiplier: Decimal,
     ) -> Decimal {
         let quantity = activity.qty();
-        let price_basis =
-            quantity * activity.price() * Self::valid_unit_multiplier(unit_multiplier);
-        if !price_basis.is_zero() {
+        let price_basis = quantity
+            .checked_mul(activity.price())
+            .and_then(|value| value.checked_mul(Self::valid_unit_multiplier(unit_multiplier)))
+            .filter(|value| !value.is_zero());
+        if let Some(price_basis) = price_basis {
             return price_basis;
         }
 
@@ -940,6 +965,131 @@ mod cash_tests {
         assert_eq!(resolved.final_amount, Some(dec!(1)));
         assert_eq!(resolved.signed_cash_effect, Some(dec!(-1)));
         assert_eq!(resolved.gross_amount, Some(dec!(1)));
+    }
+
+    #[test]
+    fn a_trade_gross_too_large_to_represent_derives_nothing() {
+        // `rust_decimal` panics on overflow rather than saturating, and nothing
+        // bounds quantity or unit price on the way in. A product we cannot
+        // represent is not a figure to claim anything about, so it derives
+        // nothing - the same answer a row with no quantity already gets.
+        let mut buy = inputs(ACTIVITY_TYPE_BUY);
+        buy.quantity = Some(Decimal::MAX);
+        buy.unit_price = Some(dec!(2));
+
+        assert_eq!(
+            ActivityEconomicsResolver::calculate_trade_final_cash(buy),
+            None
+        );
+    }
+
+    #[test]
+    fn a_multiplier_that_overflows_the_trade_gross_derives_nothing() {
+        // The quoted product fits; the contract multiplier is the third factor
+        // that takes it out of range.
+        let mut buy = inputs(ACTIVITY_TYPE_BUY);
+        buy.quantity = Some(Decimal::MAX);
+        buy.unit_price = Some(dec!(1));
+        buy.unit_multiplier = dec!(100);
+
+        assert_eq!(
+            ActivityEconomicsResolver::calculate_trade_final_cash(buy),
+            None
+        );
+    }
+
+    #[test]
+    fn charges_that_overflow_a_representable_gross_derive_nothing() {
+        // The gross itself is representable. Adding the buy's charges to it is
+        // not, and that sum is the number actually being stored.
+        let mut buy = inputs(ACTIVITY_TYPE_BUY);
+        buy.quantity = Some(Decimal::MAX);
+        buy.unit_price = Some(dec!(1));
+        buy.fee = Some(dec!(1));
+        buy.tax = None;
+
+        assert_eq!(
+            ActivityEconomicsResolver::calculate_trade_final_cash(buy),
+            None
+        );
+    }
+
+    #[test]
+    fn charges_too_large_to_total_derive_no_gross() {
+        // Reverse-deriving gross from an authoritative final amount adds the
+        // charges back on. Charges that cannot be totalled leave the stored
+        // final cash untouched and simply yield no gross.
+        let mut buy = inputs(ACTIVITY_TYPE_BUY);
+        buy.amount = Some(dec!(100));
+        buy.fee = Some(Decimal::MAX);
+        buy.tax = Some(Decimal::MAX);
+
+        let resolved = ActivityEconomicsResolver::resolve_cash_inputs(buy);
+
+        assert_eq!(resolved.final_amount, Some(dec!(100)));
+        assert_eq!(resolved.signed_cash_effect, Some(dec!(-100)));
+        assert_eq!(resolved.gross_amount, None);
+    }
+
+    #[test]
+    fn a_composite_gross_too_large_to_represent_derives_nothing() {
+        // Same exposure on the DRIP/staking path, which multiplies the same
+        // three factors.
+        assert_eq!(
+            ActivityEconomicsResolver::calculate_composite_final_cash(
+                ACTIVITY_TYPE_DIVIDEND,
+                Some(ACTIVITY_SUBTYPE_DRIP),
+                Some(Decimal::MAX),
+                Some(dec!(2)),
+                Decimal::ONE,
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn a_lot_basis_too_large_to_represent_falls_back_like_a_zero_one() {
+        // An unrepresentable price basis is no more usable than a zero one, so
+        // it takes the same fallback: the transfer-in's stored amount.
+        let mut transfer = stored_activity(ACTIVITY_TYPE_TRANSFER_IN);
+        transfer.quantity = Some(Decimal::MAX);
+        transfer.unit_price = Some(dec!(2));
+        transfer.amount = Some(dec!(500));
+
+        assert_eq!(
+            ActivityEconomicsResolver::lot_cost_basis_value_with_unit_multiplier(
+                &transfer,
+                Decimal::ONE
+            ),
+            dec!(500)
+        );
+    }
+
+    #[test]
+    fn a_transfer_market_value_too_large_to_represent_defers_to_cost_basis() {
+        // A quote that cannot be multiplied out leaves the transfer exactly
+        // where an absent quote leaves it.
+        let mut transfer = stored_activity(ACTIVITY_TYPE_TRANSFER_IN);
+        transfer.quantity = Some(Decimal::MAX);
+        transfer.unit_price = Some(dec!(1));
+        let quote = Quote {
+            close: dec!(2),
+            currency: "USD".to_string(),
+            ..Default::default()
+        };
+
+        let compiled = ActivityEconomicsResolver::compile_activity_with_unit_multiplier(
+            &transfer,
+            Some(&quote),
+            TransferBoundary::External,
+            Decimal::ONE,
+        );
+
+        assert_eq!(
+            compiled.performance_flow_source,
+            ExternalFlowSource::CostBasisFallback
+        );
+        assert_eq!(compiled.performance_flow_value, Decimal::MAX);
     }
 
     #[test]
