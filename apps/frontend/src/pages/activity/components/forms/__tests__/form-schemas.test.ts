@@ -1685,5 +1685,18 @@ describe("Form Schemas Validation", () => {
 
       expect(result.success).toBe(true);
     });
+
+    it("accepts a cash adjustment without an asset", () => {
+      const result = newActivitySchema.safeParse({
+        accountId: "acc-123",
+        activityType: "ADJUSTMENT",
+        activityDate: new Date(),
+        assetId: "",
+        amount: 25,
+        currency: "USD",
+      });
+
+      expect(result.success).toBe(true);
+    });
   });
 });

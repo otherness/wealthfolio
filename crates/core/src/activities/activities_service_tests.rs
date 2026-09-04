@@ -4,7 +4,7 @@ mod tests {
     use crate::activities::activities_model::*;
     use crate::activities::{
         ActivityRepositoryTrait, ActivityService, ActivityServiceTrait, ImportRun,
-        ImportRunRepositoryTrait, ImportRunStatus,
+        ImportRunRepositoryTrait, ImportRunStatus, ACTIVITY_TYPE_ADJUSTMENT,
     };
     use crate::assets::{
         normalize_quote_ccy_code, parse_crypto_pair_symbol, parse_symbol_with_exchange_suffix,
@@ -7423,6 +7423,43 @@ mod tests {
             created.asset_id, None,
             "WITHDRAWAL should have no asset_id (cash activities have no asset in v2)"
         );
+    }
+
+    #[tokio::test]
+    async fn test_update_cash_adjustment_without_asset() {
+        let account_service = Arc::new(MockAccountService::new());
+        let asset_service = Arc::new(MockAssetService::new());
+        let fx_service = Arc::new(MockFxService::new());
+        let activity_repository = Arc::new(MockActivityRepository::new());
+
+        account_service.add_account(create_test_account("acc-1", "USD"));
+        let mut existing = create_stored_activity("cash-adjustment", "acc-1", None);
+        existing.activity_type = ACTIVITY_TYPE_ADJUSTMENT.to_string();
+        existing.quantity = None;
+        existing.unit_price = None;
+        existing.amount = Some(dec!(25));
+        activity_repository.add_activity(existing);
+
+        let activity_service = ActivityService::new(
+            activity_repository,
+            account_service,
+            asset_service,
+            fx_service,
+            Arc::new(MockQuoteService),
+        );
+        let mut update = create_test_activity_update("cash-adjustment", "acc-1", None, "USD");
+        update.activity_type = ACTIVITY_TYPE_ADJUSTMENT.to_string();
+        update.quantity = Some(None);
+        update.unit_price = Some(None);
+        update.amount = Some(Some(dec!(30)));
+
+        let updated = activity_service
+            .update_activity(update)
+            .await
+            .expect("cash adjustment update should not require an asset");
+
+        assert_eq!(updated.asset_id, None);
+        assert_eq!(updated.amount, Some(dec!(30)));
     }
 
     /// Test: Non-cash activity (BUY) without symbol or asset_id fails

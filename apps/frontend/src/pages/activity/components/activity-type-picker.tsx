@@ -66,12 +66,26 @@ const SECONDARY_ACTIVITY_TYPES: ActivityTypeConfig<SecondaryActivityType>[] = [
 ];
 
 const ALL_ACTIVITY_TYPES = [...PRIMARY_ACTIVITY_TYPES, ...SECONDARY_ACTIVITY_TYPES];
+// ADJUSTMENT has an editor but is deliberately not offered as a way to record a
+// new activity, so it is absent from the lists above. Reclassifying an
+// unclassified row is the one flow that has to be able to reach it.
+const RECLASSIFICATION_ACTIVITY_TYPES: ActivityTypeConfig<
+  typeof CanonicalActivityType.ADJUSTMENT
+>[] = [
+  {
+    value: CanonicalActivityType.ADJUSTMENT,
+    labelKey: "activity:mobile_type_adjustment_label",
+    icon: "RefreshCw",
+  },
+];
 
 interface ActivityTypePickerProps {
   value?: ActivityType;
   onSelect: (type: ActivityType) => void;
   /** Optional list of allowed activity types. If not provided, all types are shown. */
   allowedTypes?: readonly string[];
+  /** Also offer ADJUSTMENT, for an unclassified row being reclassified. */
+  includeReclassificationTypes?: boolean;
 }
 
 type ViewMode = "carousel" | "grid";
@@ -277,7 +291,12 @@ function GridView({
   );
 }
 
-export function ActivityTypePicker({ value, onSelect, allowedTypes }: ActivityTypePickerProps) {
+export function ActivityTypePicker({
+  value,
+  onSelect,
+  allowedTypes,
+  includeReclassificationTypes = false,
+}: ActivityTypePickerProps) {
   const { t } = useTranslation();
   const [viewMode, setViewMode] = useState<ViewMode>("carousel");
 
@@ -285,10 +304,14 @@ export function ActivityTypePicker({ value, onSelect, allowedTypes }: ActivityTy
     setViewMode((prev) => (prev === "carousel" ? "grid" : "carousel"));
   }, []);
 
+  const availableTypes: ActivityTypeConfig<ActivityType>[] = includeReclassificationTypes
+    ? [...ALL_ACTIVITY_TYPES, ...RECLASSIFICATION_ACTIVITY_TYPES]
+    : ALL_ACTIVITY_TYPES;
+
   // Filter types if allowedTypes is provided
   const filteredTypes = allowedTypes
-    ? ALL_ACTIVITY_TYPES.filter((type) => allowedTypes.includes(type.value))
-    : ALL_ACTIVITY_TYPES;
+    ? availableTypes.filter((type) => allowedTypes.includes(type.value))
+    : availableTypes;
 
   return (
     <div className="space-y-1 overflow-hidden">
