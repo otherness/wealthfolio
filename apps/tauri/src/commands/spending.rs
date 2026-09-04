@@ -284,9 +284,6 @@ pub async fn bulk_assign_categories(
 pub async fn list_categorization_rules(
     state: State<'_, Arc<ServiceContext>>,
 ) -> Result<Vec<CategorizationRule>, String> {
-    if !spending_enabled(&state).await? {
-        return Ok(Vec::new());
-    }
     state
         .categorization_rules_service()
         .list()
@@ -321,6 +318,24 @@ pub async fn update_categorization_rule(
         .map_err(|e| format!("Failed to update rule: {}", e))?;
     spawn_auto_categorize_for_opted_in_accounts(&state).await;
     Ok(updated)
+}
+
+/// Atomically create-or-update the rule identified by `rule.id` (required).
+/// Used by the addon bridge's `spending.saveRule`, which derives a stable id
+/// up front so repeat saves of the same logical rule land on the same row
+/// instead of racing a separate list-then-create-or-update probe.
+#[tauri::command]
+pub async fn upsert_categorization_rule(
+    rule: NewCategorizationRule,
+    state: State<'_, Arc<ServiceContext>>,
+) -> Result<CategorizationRule, String> {
+    let saved = state
+        .categorization_rules_service()
+        .upsert(rule)
+        .await
+        .map_err(|e| format!("Failed to save rule: {}", e))?;
+    spawn_auto_categorize_for_opted_in_accounts(&state).await;
+    Ok(saved)
 }
 
 #[tauri::command]

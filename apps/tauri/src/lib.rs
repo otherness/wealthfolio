@@ -468,6 +468,7 @@ pub fn run() {
             commands::spending::list_categorization_rules,
             commands::spending::create_categorization_rule,
             commands::spending::update_categorization_rule,
+            commands::spending::upsert_categorization_rule,
             commands::spending::delete_categorization_rule,
             commands::spending::rerun_categorization_rules,
             commands::spending::list_rule_presets,

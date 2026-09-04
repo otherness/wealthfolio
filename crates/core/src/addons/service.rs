@@ -313,6 +313,19 @@ pub fn detect_addon_permissions(addon_files: &[AddonFile]) -> Vec<AddonPermissio
             "Access to exchange rates and currency data",
         ),
         (
+            "spending",
+            "spending",
+            vec![
+                "isEnabled",
+                "getCategories",
+                "getRules",
+                "saveRule",
+                "deleteRule",
+                "rerunRules",
+            ],
+            "Access to spend categories and categorization rules",
+        ),
+        (
             "settings",
             "settings",
             vec!["get", "update", "backupDatabase"],

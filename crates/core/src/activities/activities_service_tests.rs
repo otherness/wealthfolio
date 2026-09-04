@@ -12656,6 +12656,225 @@ mod tests {
         }
     }
 
+    fn legacy_trade_import_fixture(
+        activity_type: &str,
+    ) -> (ActivityService, Arc<MockActivityRepository>, ActivityImport) {
+        let account_service = Arc::new(MockAccountService::new());
+        account_service.add_account(create_test_account("acc-1", "EUR"));
+        account_service.add_account(create_test_account("acc-2", "EUR"));
+        let asset_service = Arc::new(MockAssetService::new());
+        let mut asset = create_test_asset_with_instrument(
+            "asset-custom",
+            "CUSTOM",
+            None,
+            Some(InstrumentType::Equity),
+            "EUR",
+        );
+        asset.quote_mode = QuoteMode::Manual;
+        asset_service.add_asset(asset);
+
+        let mut stored = create_stored_activity("legacy-trade", "acc-1", Some("asset-custom"));
+        stored.activity_type = activity_type.to_string();
+        stored.activity_date = parse_test_activity_datetime("2024-01-15T06:11:20Z");
+        stored.quantity = Some(dec!(7));
+        stored.unit_price = Some(dec!(15));
+        stored.currency = "EUR".to_string();
+        stored.source_system = Some("MANUAL".to_string());
+        stored.amount = None;
+        stored.idempotency_key = Some(crate::activities::compute_activity_idempotency_key(&stored));
+        // The final-cash migration fills a legacy NULL amount without rewriting its key.
+        stored.amount = Some(dec!(105));
+        let activity_repository = Arc::new(MockActivityRepository::new());
+        activity_repository.activities.lock().unwrap().push(stored);
+
+        let activity_service = ActivityService::new(
+            activity_repository.clone(),
+            account_service,
+            asset_service,
+            Arc::new(MockFxService::new()),
+            Arc::new(MockQuoteService),
+        );
+        let import = ActivityImport {
+            id: None,
+            date: "2024-01-15T06:11:20+00:00".to_string(),
+            symbol: "CUSTOM".to_string(),
+            activity_type: activity_type.to_string(),
+            quantity: Some(dec!(7)),
+            unit_price: Some(dec!(15)),
+            currency: "EUR".to_string(),
+            fee: Some(dec!(0)),
+            tax: None,
+            amount: Some(dec!(105)),
+            comment: None,
+            account_id: Some("acc-1".to_string()),
+            account_name: None,
+            symbol_name: None,
+            exchange_mic: None,
+            quote_ccy: Some("EUR".to_string()),
+            instrument_type: Some("EQUITY".to_string()),
+            quote_mode: Some("MANUAL".to_string()),
+            provider_id: None,
+            provider_symbol: None,
+            errors: None,
+            warnings: None,
+            duplicate_of_id: None,
+            duplicate_of_line_number: None,
+            is_draft: false,
+            is_valid: true,
+            line_number: Some(1),
+            fx_rate: None,
+            subtype: None,
+            asset_id: Some("asset-custom".to_string()),
+            isin: None,
+            force_import: false,
+            is_external: None,
+        };
+        (activity_service, activity_repository, import)
+    }
+
+    #[tokio::test]
+    async fn test_check_import_detects_legacy_trade_with_exported_amount() {
+        for activity_type in ["BUY", "SELL"] {
+            let (service, _, mut import) = legacy_trade_import_fixture(activity_type);
+            // Exercise asset resolution as in a CSV containing only the symbol.
+            import.asset_id = None;
+            let checked = service.check_activities_import(vec![import]).await.unwrap();
+            assert!(checked[0].is_valid);
+            assert_eq!(checked[0].duplicate_of_id.as_deref(), Some("legacy-trade"));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_import_skips_legacy_trade_with_exported_amount() {
+        for activity_type in ["BUY", "SELL"] {
+            let (service, repository, import) = legacy_trade_import_fixture(activity_type);
+            let original_key = repository.get_activities().unwrap()[0]
+                .idempotency_key
+                .clone();
+            let result = service.import_activities(vec![import]).await.unwrap();
+            assert!(result.summary.success);
+            assert_eq!(result.summary.imported, 0);
+            assert_eq!(result.summary.duplicates, 1);
+            assert_eq!(
+                result.activities[0].duplicate_of_id.as_deref(),
+                Some("legacy-trade")
+            );
+            let stored = repository.get_activities().unwrap();
+            assert_eq!(stored.len(), 1);
+            assert_eq!(stored[0].idempotency_key, original_key);
+            assert_eq!(stored[0].amount, Some(dec!(105)));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_legacy_trade_import_keeps_different_amounts_and_accounts_distinct() {
+        for activity_type in ["BUY", "SELL"] {
+            for different_account in [false, true] {
+                let (service, repository, mut import) = legacy_trade_import_fixture(activity_type);
+                if different_account {
+                    import.account_id = Some("acc-2".to_string());
+                } else {
+                    import.amount = Some(dec!(104));
+                }
+                let checked = service
+                    .check_activities_import(vec![import.clone()])
+                    .await
+                    .unwrap();
+                assert!(checked[0].is_valid);
+                assert!(checked[0].duplicate_of_id.is_none());
+                let result = service.import_activities(vec![import]).await.unwrap();
+                assert!(result.summary.success);
+                assert_eq!(result.summary.duplicates, 0);
+                assert_eq!(result.summary.imported, 1);
+                assert_eq!(repository.get_activities().unwrap().len(), 2);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_legacy_trade_import_checks_each_amount_in_a_mixed_batch() {
+        let (service, repository, import) = legacy_trade_import_fixture("SELL");
+        let mut different = import.clone();
+        different.amount = Some(dec!(104));
+        different.line_number = Some(2);
+        let imports = vec![import, different];
+        let checked = service
+            .check_activities_import(imports.clone())
+            .await
+            .unwrap();
+        assert_eq!(checked[0].duplicate_of_id.as_deref(), Some("legacy-trade"));
+        assert!(checked[1].duplicate_of_id.is_none());
+        let result = service.import_activities(imports).await.unwrap();
+        assert!(result.summary.success);
+        assert_eq!(result.summary.duplicates, 1);
+        assert_eq!(result.summary.imported, 1);
+        assert_eq!(repository.get_activities().unwrap().len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_legacy_trade_import_does_not_trust_stale_keys_or_missing_totals() {
+        for missing_amount in [false, true] {
+            let (service, repository, import) = legacy_trade_import_fixture("SELL");
+            {
+                let mut stored = repository.activities.lock().unwrap();
+                if missing_amount {
+                    stored[0].amount = None;
+                } else {
+                    stored[0].quantity = Some(dec!(8));
+                }
+            }
+            let checked = service
+                .check_activities_import(vec![import.clone()])
+                .await
+                .unwrap();
+            assert!(checked[0].duplicate_of_id.is_none());
+            let result = service.import_activities(vec![import]).await.unwrap();
+            assert!(result.summary.success);
+            assert_eq!(result.summary.duplicates, 0);
+            assert_eq!(result.summary.imported, 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_legacy_trade_import_matches_final_cash_with_charges() {
+        for (activity_type, final_cash) in [("BUY", dec!(108)), ("SELL", dec!(102))] {
+            let (service, repository, mut import) = legacy_trade_import_fixture(activity_type);
+            import.fee = Some(dec!(2));
+            import.tax = Some(dec!(1));
+            import.amount = Some(final_cash);
+            {
+                let mut stored = repository.activities.lock().unwrap();
+                stored[0].fee = import.fee;
+                stored[0].tax = import.tax;
+                stored[0].amount = None;
+                stored[0].idempotency_key = Some(
+                    crate::activities::compute_activity_idempotency_key(&stored[0]),
+                );
+                stored[0].amount = Some(final_cash);
+            }
+            let checked = service
+                .check_activities_import(vec![import.clone()])
+                .await
+                .unwrap();
+            assert_eq!(checked[0].duplicate_of_id.as_deref(), Some("legacy-trade"));
+            let result = service.import_activities(vec![import]).await.unwrap();
+            assert!(result.summary.success);
+            assert_eq!(result.summary.duplicates, 1);
+            assert_eq!(result.summary.imported, 0);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_force_import_still_allows_legacy_trade_duplicate() {
+        let (service, repository, mut import) = legacy_trade_import_fixture("SELL");
+        import.force_import = true;
+        let result = service.import_activities(vec![import]).await.unwrap();
+        assert!(result.summary.success);
+        assert_eq!(result.summary.imported, 1);
+        assert_eq!(result.summary.duplicates, 0);
+        assert_eq!(repository.get_activities().unwrap().len(), 2);
+    }
+
     #[tokio::test]
     async fn test_import_skips_existing_hard_duplicates_before_insert() {
         let account_service = Arc::new(MockAccountService::new());

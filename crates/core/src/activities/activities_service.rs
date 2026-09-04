@@ -50,7 +50,7 @@ use crate::activities::activities_constants::{
 use crate::activities::activities_errors::ActivityError;
 use crate::activities::activities_model::*;
 use crate::activities::csv_parser::{self, ParseConfig, ParsedCsvResult};
-use crate::activities::idempotency::compute_idempotency_key;
+use crate::activities::idempotency::{compute_activity_idempotency_key, compute_idempotency_key};
 use crate::activities::{
     ActivityRepositoryTrait, ActivityServiceTrait, TransferPair, TransferPairResolution,
 };
@@ -1902,6 +1902,72 @@ impl ActivityService {
             None,
             activity.comment.as_deref(),
         ))
+    }
+
+    fn add_legacy_import_duplicates<'a>(
+        &self,
+        activities: impl Iterator<Item = &'a ActivityImport>,
+        existing: &mut HashMap<String, String>,
+    ) -> Result<()> {
+        let mut keys_by_legacy_key: HashMap<String, HashSet<String>> = HashMap::new();
+        for activity in activities {
+            if !matches!(
+                activity.activity_type.as_str(),
+                ACTIVITY_TYPE_BUY | ACTIVITY_TYPE_SELL
+            ) || activity.amount.is_none()
+                || activity.quantity.is_none()
+                || activity.unit_price.is_none()
+            {
+                continue;
+            }
+            let Some(account_id) = activity.account_id.as_deref() else {
+                continue;
+            };
+            let Some(key) = Self::build_import_idempotency_key(activity, account_id) else {
+                continue;
+            };
+            if existing.contains_key(&key) {
+                continue;
+            }
+
+            // Legacy trades could be keyed before their amount was derived. The
+            // final-cash migration intentionally preserves those stored keys.
+            let mut legacy = activity.clone();
+            legacy.amount = None;
+            if let Some(legacy_key) = Self::build_import_idempotency_key(&legacy, account_id) {
+                keys_by_legacy_key
+                    .entry(legacy_key)
+                    .or_default()
+                    .insert(key);
+            }
+        }
+        if keys_by_legacy_key.is_empty() {
+            return Ok(());
+        }
+
+        let candidates =
+            self.check_existing_duplicates(keys_by_legacy_key.keys().cloned().collect())?;
+        let candidate_ids: Vec<String> = candidates.into_values().collect();
+        for stored in self
+            .activity_repository
+            .get_activities_by_ids(&candidate_ids)?
+        {
+            let Some(requested_keys) = stored
+                .idempotency_key
+                .as_ref()
+                .and_then(|key| keys_by_legacy_key.get(key))
+            else {
+                continue;
+            };
+            // The amount-less key is only a lookup hint, not proof of a duplicate.
+            // Require the current stored fields, including final cash, to match.
+            // This also avoids matching an edited row using its stale legacy key.
+            let current_key = compute_activity_idempotency_key(&stored);
+            if requested_keys.contains(&current_key) {
+                existing.insert(current_key, stored.id);
+            }
+        }
+        Ok(())
     }
 
     fn add_activity_warning(activity: &mut ActivityImport, key: &str, message: &str) {
@@ -4210,12 +4276,19 @@ impl ActivityService {
         }
 
         let unique_keys: Vec<String> = first_index_by_key.into_keys().collect();
-        let existing = if unique_keys.is_empty() {
+        let mut existing = if unique_keys.is_empty() {
             HashMap::new()
         } else {
             self.check_existing_duplicates(unique_keys)
                 .unwrap_or_default()
         };
+        self.add_legacy_import_duplicates(
+            activities_with_status
+                .iter()
+                .zip(&keys)
+                .filter_map(|(activity, key)| key.as_ref().map(|_| activity)),
+            &mut existing,
+        )?;
 
         for (idx, maybe_key) in keys.iter().enumerate() {
             let Some(key) = maybe_key else {
@@ -5643,11 +5716,19 @@ impl ActivityServiceTrait for ActivityService {
             }
         }
 
-        let existing_duplicates = if first_index_by_key.is_empty() {
+        let mut existing_duplicates = if first_index_by_key.is_empty() {
             HashMap::new()
         } else {
             self.check_existing_duplicates(first_index_by_key.keys().cloned().collect())?
         };
+        self.add_legacy_import_duplicates(
+            source_slice
+                .iter()
+                .enumerate()
+                .filter(|(position, _)| !policy_failed_positions.contains(position))
+                .map(|(_, activity)| activity),
+            &mut existing_duplicates,
+        )?;
 
         let mut duplicate_count = 0u32;
         let mut insertable_positions: Vec<usize> = Vec::with_capacity(new_activities.len());
