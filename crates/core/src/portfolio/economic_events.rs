@@ -211,28 +211,29 @@ impl ActivityEconomicsResolver {
             return Ok(resolved);
         }
 
+        // A compiled total is known only when every posting is known. Skipping
+        // an unavailable posting would misreport the remaining partial sum.
         let mut signed_cash_effect = Some(Decimal::ZERO);
         let mut signed_gross_effect = Some(Decimal::ZERO);
-        let mut has_cash_effect = false;
-        let mut has_gross_effect = false;
         for posting in postings {
             let posting_cash = Self::resolve_cash_with_account_context(
                 &posting,
                 unit_multiplier,
                 is_credit_card_account,
             );
-            if let Some(effect) = posting_cash.signed_cash_effect {
-                signed_cash_effect = signed_cash_effect.and_then(|total| total.checked_add(effect));
-                has_cash_effect = true;
-            }
-            if let Some(effect) = posting_cash.signed_gross_effect {
-                signed_gross_effect =
-                    signed_gross_effect.and_then(|total| total.checked_add(effect));
-                has_gross_effect = true;
-            }
+            signed_cash_effect = signed_cash_effect.and_then(|total| {
+                posting_cash
+                    .signed_cash_effect
+                    .and_then(|effect| total.checked_add(effect))
+            });
+            signed_gross_effect = signed_gross_effect.and_then(|total| {
+                posting_cash
+                    .signed_gross_effect
+                    .and_then(|effect| total.checked_add(effect))
+            });
         }
-        resolved.signed_cash_effect = has_cash_effect.then_some(signed_cash_effect).flatten();
-        resolved.signed_gross_effect = has_gross_effect.then_some(signed_gross_effect).flatten();
+        resolved.signed_cash_effect = signed_cash_effect;
+        resolved.signed_gross_effect = signed_gross_effect;
         Ok(resolved)
     }
 
@@ -1086,6 +1087,22 @@ mod cash_tests {
                 .unwrap();
         assert_eq!(ordinary_account.signed_cash_effect, Some(Decimal::ZERO));
         assert_eq!(ordinary_account.signed_gross_effect, Some(Decimal::ZERO));
+    }
+
+    #[test]
+    fn compiled_gross_is_unknown_when_any_posting_gross_is_unknown() {
+        let mut drip = stored_activity(ACTIVITY_TYPE_DIVIDEND);
+        drip.subtype = Some(ACTIVITY_SUBTYPE_DRIP.to_string());
+        drip.quantity = Some(Decimal::ONE);
+        drip.unit_price = Some(Decimal::MAX);
+        drip.amount = Some(Decimal::MAX);
+        drip.fee = Some(Decimal::ONE);
+
+        let resolved =
+            ActivityEconomicsResolver::resolve_compiled_cash(&drip, Decimal::ONE, false).unwrap();
+
+        assert_eq!(resolved.signed_cash_effect, Some(Decimal::ZERO));
+        assert_eq!(resolved.signed_gross_effect, None);
     }
 
     #[test]
