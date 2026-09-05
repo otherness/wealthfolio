@@ -259,7 +259,8 @@ struct LegacyCashDecision {
     /// change, so the account rebuilds rather than being skipped on a
     /// comparison nobody could make.
     previous_cash_effect: Option<Decimal>,
-    final_cash_effect: Decimal,
+    /// Unknown totals must also trigger review and a rebuild.
+    final_cash_effect: Option<Decimal>,
 }
 
 pub(crate) async fn migrate_activities_to_final_cash(
@@ -308,7 +309,9 @@ pub(crate) async fn migrate_activities_to_final_cash(
         };
 
         if activity.status == ActivityStatus::Posted
-            && decision.previous_cash_effect != Some(decision.final_cash_effect)
+            && (decision.previous_cash_effect.is_none()
+                || decision.final_cash_effect.is_none()
+                || decision.previous_cash_effect != decision.final_cash_effect)
         {
             affected_account_ids.insert(activity.account_id.clone());
         }
@@ -509,8 +512,7 @@ fn classify_legacy_activity_cash(
         account_facts.is_credit_card,
     )
     .ok()
-    .and_then(|resolved| resolved.signed_cash_effect)
-    .unwrap_or(Decimal::ZERO);
+    .and_then(|resolved| resolved.signed_cash_effect);
 
     // Before the cutover the review queue was `status = DRAFT`; after it,
     // `needs_review` is the only queue. Flag legacy drafts so they stay
@@ -519,7 +521,10 @@ fn classify_legacy_activity_cash(
 
     Some(LegacyCashDecision {
         final_amount,
-        needs_review: needs_review || activity.needs_review || is_legacy_draft,
+        needs_review: needs_review
+            || activity.needs_review
+            || is_legacy_draft
+            || final_cash_effect.is_none(),
         previous_cash_effect,
         final_cash_effect,
     })
@@ -885,7 +890,7 @@ mod tests {
         assert_eq!(decision.final_amount, Some(dec!(100)));
         assert!(decision.needs_review);
         assert_eq!(decision.previous_cash_effect, Some(dec!(85)));
-        assert_eq!(decision.final_cash_effect, dec!(100));
+        assert_eq!(decision.final_cash_effect, Some(dec!(100)));
     }
 
     #[test]
@@ -900,7 +905,7 @@ mod tests {
 
         assert_eq!(decision.final_amount, Some(dec!(100)));
         assert!(decision.needs_review);
-        assert_eq!(decision.final_cash_effect, dec!(100));
+        assert_eq!(decision.final_cash_effect, Some(dec!(100)));
     }
 
     #[test]
@@ -917,7 +922,7 @@ mod tests {
         assert_eq!(decision.final_amount, Some(dec!(23)));
         assert!(!decision.needs_review);
         assert_eq!(decision.previous_cash_effect, Some(dec!(-23)));
-        assert_eq!(decision.final_cash_effect, dec!(-23));
+        assert_eq!(decision.final_cash_effect, Some(dec!(-23)));
     }
 
     #[test]
@@ -974,7 +979,7 @@ mod tests {
         let decision = classify_legacy_activity_cash(&sell, facts(), &account_facts()).unwrap();
 
         assert_eq!(decision.final_amount, Some(dec!(2)));
-        assert_eq!(decision.final_cash_effect, dec!(-2));
+        assert_eq!(decision.final_cash_effect, Some(dec!(-2)));
         assert!(!decision.needs_review);
     }
 
@@ -1111,7 +1116,7 @@ mod tests {
         assert_eq!(decision.final_amount, Some(dec!(100)));
         assert!(decision.needs_review);
         assert_eq!(decision.previous_cash_effect, Some(dec!(95)));
-        assert_eq!(decision.final_cash_effect, dec!(100));
+        assert_eq!(decision.final_cash_effect, Some(dec!(100)));
     }
 
     #[test]
@@ -1128,6 +1133,38 @@ mod tests {
         let decision = classify_legacy_activity_cash(&deposit, facts(), &account_facts()).unwrap();
 
         assert_eq!(decision.final_amount, Some(dec!(100)));
+        assert!(decision.needs_review);
+    }
+
+    #[test]
+    fn composite_price_division_overflow_still_classifies() {
+        let mut drip = activity(ACTIVITY_TYPE_DIVIDEND);
+        drip.subtype = Some("DRIP".to_string());
+        drip.quantity = Some(dec!(0.1));
+        drip.amount = Some(Decimal::MAX);
+        let decision = classify_legacy_activity_cash(&drip, facts(), &account_facts()).unwrap();
+        assert_eq!(decision.final_amount, Some(Decimal::MAX));
+        assert_eq!(decision.final_cash_effect, Some(Decimal::ZERO));
+    }
+
+    #[test]
+    fn credit_card_staking_overflow_stays_unknown_and_reviewable() {
+        let mut staking = activity(ACTIVITY_TYPE_INTEREST);
+        staking.subtype = Some("STAKING_REWARD".to_string());
+        staking.quantity = Some(dec!(1));
+        staking.unit_price = Some(Decimal::MAX);
+        staking.amount = Some(Decimal::MAX);
+        let decision = classify_legacy_activity_cash(
+            &staking,
+            facts(),
+            &AccountCashFacts {
+                is_credit_card: true,
+            },
+        )
+        .unwrap();
+        assert_eq!(decision.final_amount, Some(Decimal::MAX));
+        assert_eq!(decision.previous_cash_effect, None);
+        assert_eq!(decision.final_cash_effect, None);
         assert!(decision.needs_review);
     }
 
@@ -1168,7 +1205,7 @@ mod tests {
         assert_eq!(decision.final_amount, Some(dec!(9850)));
         assert!(!decision.needs_review);
         assert_eq!(decision.previous_cash_effect, Some(dec!(-9850)));
-        assert_eq!(decision.final_cash_effect, dec!(-9850));
+        assert_eq!(decision.final_cash_effect, Some(dec!(-9850)));
     }
 
     #[test]
@@ -1220,7 +1257,7 @@ mod tests {
 
         assert_eq!(decision.final_amount, Some(dec!(100)));
         assert_eq!(decision.previous_cash_effect, Some(Decimal::ZERO));
-        assert_eq!(decision.final_cash_effect, Decimal::ZERO);
+        assert_eq!(decision.final_cash_effect, Some(Decimal::ZERO));
         assert!(!decision.needs_review);
     }
 
@@ -1276,10 +1313,7 @@ mod tests {
 
         assert_eq!(decision.final_amount, Some(dec!(100)));
         assert!(decision.needs_review);
-        assert_ne!(
-            decision.previous_cash_effect,
-            Some(decision.final_cash_effect)
-        );
+        assert_ne!(decision.previous_cash_effect, decision.final_cash_effect);
     }
 
     #[test]

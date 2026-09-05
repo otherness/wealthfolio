@@ -211,8 +211,8 @@ impl ActivityEconomicsResolver {
             return Ok(resolved);
         }
 
-        let mut signed_cash_effect = Decimal::ZERO;
-        let mut signed_gross_effect = Decimal::ZERO;
+        let mut signed_cash_effect = Some(Decimal::ZERO);
+        let mut signed_gross_effect = Some(Decimal::ZERO);
         let mut has_cash_effect = false;
         let mut has_gross_effect = false;
         for posting in postings {
@@ -222,16 +222,17 @@ impl ActivityEconomicsResolver {
                 is_credit_card_account,
             );
             if let Some(effect) = posting_cash.signed_cash_effect {
-                signed_cash_effect += effect;
+                signed_cash_effect = signed_cash_effect.and_then(|total| total.checked_add(effect));
                 has_cash_effect = true;
             }
             if let Some(effect) = posting_cash.signed_gross_effect {
-                signed_gross_effect += effect;
+                signed_gross_effect =
+                    signed_gross_effect.and_then(|total| total.checked_add(effect));
                 has_gross_effect = true;
             }
         }
-        resolved.signed_cash_effect = has_cash_effect.then_some(signed_cash_effect);
-        resolved.signed_gross_effect = has_gross_effect.then_some(signed_gross_effect);
+        resolved.signed_cash_effect = has_cash_effect.then_some(signed_cash_effect).flatten();
+        resolved.signed_gross_effect = has_gross_effect.then_some(signed_gross_effect).flatten();
         Ok(resolved)
     }
 
@@ -458,6 +459,19 @@ impl ActivityEconomicsResolver {
         let lot_cost_basis_uses_legacy_amount =
             is_security_transfer && Self::lot_cost_basis_uses_legacy_amount(activity);
         let mut diagnostics = Vec::new();
+        let basis_status = if !is_security_transfer {
+            BasisStatus::NotApplicable
+        } else if lot_cost_basis_value.is_zero() {
+            if Self::security_transfer_has_book_basis(activity) {
+                diagnostics.push(format!(
+                    "Security transfer activity {} could not derive a usable cost basis from its supplied values.",
+                    activity.id
+                ));
+            }
+            BasisStatus::Unknown
+        } else {
+            BasisStatus::Complete
+        };
 
         if kind == EconomicEventKind::UnknownBoundaryTransfer {
             diagnostics.push(format!(
@@ -474,11 +488,7 @@ impl ActivityEconomicsResolver {
                 performance_flow_value: Decimal::ZERO,
                 performance_flow_currency: activity_currency,
                 performance_flow_source: ExternalFlowSource::Unknown,
-                basis_status: if is_security_transfer {
-                    Self::security_transfer_basis_status(activity)
-                } else {
-                    BasisStatus::NotApplicable
-                },
+                basis_status,
                 diagnostics,
             };
         }
@@ -510,7 +520,7 @@ impl ActivityEconomicsResolver {
                         } else {
                             ExternalFlowSource::QuoteDerivedMarketValue
                         },
-                        basis_status: Self::security_transfer_basis_status(activity),
+                        basis_status,
                         diagnostics,
                     };
                 }
@@ -686,14 +696,6 @@ impl ActivityEconomicsResolver {
             && (activity.unit_price.is_some_and(|price| !price.is_zero())
                 || (activity.effective_type() == ACTIVITY_TYPE_TRANSFER_IN
                     && activity.amount.is_some_and(|amount| !amount.is_zero())))
-    }
-
-    fn security_transfer_basis_status(activity: &Activity) -> BasisStatus {
-        if Self::security_transfer_has_book_basis(activity) {
-            BasisStatus::Complete
-        } else {
-            BasisStatus::Unknown
-        }
     }
 
     fn event_kind(activity: &Activity, transfer_boundary: TransferBoundary) -> EconomicEventKind {
@@ -1063,6 +1065,62 @@ mod cash_tests {
             ),
             dec!(500)
         );
+    }
+
+    #[test]
+    fn compiled_overflow_keeps_cash_and_gross_totals_unknown() {
+        let mut staking = stored_activity(ACTIVITY_TYPE_INTEREST);
+        staking.subtype = Some(ACTIVITY_SUBTYPE_STAKING_REWARD.to_string());
+        staking.quantity = Some(Decimal::ONE);
+        staking.unit_price = Some(Decimal::MAX);
+        staking.amount = Some(Decimal::MAX);
+
+        let resolved =
+            ActivityEconomicsResolver::resolve_compiled_cash(&staking, Decimal::ONE, true).unwrap();
+        assert_eq!(resolved.final_amount, Some(Decimal::MAX));
+        assert_eq!(resolved.signed_cash_effect, None);
+        assert_eq!(resolved.signed_gross_effect, None);
+
+        let ordinary_account =
+            ActivityEconomicsResolver::resolve_compiled_cash(&staking, Decimal::ONE, false)
+                .unwrap();
+        assert_eq!(ordinary_account.signed_cash_effect, Some(Decimal::ZERO));
+        assert_eq!(ordinary_account.signed_gross_effect, Some(Decimal::ZERO));
+    }
+
+    #[test]
+    fn overflowed_transfer_basis_is_unknown() {
+        let mut transfer = stored_activity(ACTIVITY_TYPE_TRANSFER_IN);
+        transfer.quantity = Some(Decimal::MAX);
+        transfer.unit_price = Some(dec!(2));
+        transfer.amount = None;
+        let quote = Quote {
+            close: Decimal::ONE,
+            currency: "USD".to_string(),
+            ..Default::default()
+        };
+        let resolved = ActivityEconomicsResolver::compile_activity_with_unit_multiplier(
+            &transfer,
+            Some(&quote),
+            TransferBoundary::External,
+            Decimal::ONE,
+        );
+        assert_eq!(resolved.lot_cost_basis_value, Decimal::ZERO);
+        assert_eq!(resolved.basis_status, BasisStatus::Unknown);
+        assert!(resolved
+            .diagnostics
+            .iter()
+            .any(|message| message.contains("could not derive a usable cost basis")));
+
+        transfer.amount = Some(dec!(500));
+        let fallback = ActivityEconomicsResolver::compile_activity_with_unit_multiplier(
+            &transfer,
+            Some(&quote),
+            TransferBoundary::External,
+            Decimal::ONE,
+        );
+        assert_eq!(fallback.lot_cost_basis_value, dec!(500));
+        assert_eq!(fallback.basis_status, BasisStatus::Complete);
     }
 
     #[test]
