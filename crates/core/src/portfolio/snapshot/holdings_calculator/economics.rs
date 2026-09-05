@@ -142,8 +142,18 @@ pub(crate) fn proportional_amount(
 ) -> Decimal {
     if amount.is_zero() || part_quantity.is_zero() || total_quantity.is_zero() {
         Decimal::ZERO
+    } else if part_quantity == total_quantity {
+        amount
     } else {
-        amount * part_quantity / total_quantity
+        amount
+            .checked_mul(part_quantity)
+            .and_then(|value| value.checked_div(total_quantity))
+            .or_else(|| {
+                amount
+                    .checked_div(total_quantity)
+                    .and_then(|value| value.checked_mul(part_quantity))
+            })
+            .unwrap_or(Decimal::ZERO)
     }
 }
 
