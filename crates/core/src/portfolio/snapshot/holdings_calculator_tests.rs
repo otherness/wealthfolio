@@ -1118,6 +1118,50 @@ mod tests {
     }
 
     #[test]
+    fn drip_with_unrepresentable_acquisition_price_rebuilds_without_panicking() {
+        let account_currency = "USD";
+        let target_date_str = "2026-05-05";
+        let target_date = NaiveDate::from_str(target_date_str).unwrap();
+        for (quantity, expected_basis, expected_status) in [
+            (dec!(0.1), Decimal::ZERO, BasisStatus::Unknown),
+            (dec!(2), Decimal::ZERO, BasisStatus::Unknown),
+            (dec!(3), Decimal::MAX, BasisStatus::Complete),
+        ] {
+            let base_currency = Arc::new(RwLock::new(account_currency.to_string()));
+            let mut calculator = create_calculator(Arc::new(MockFxService::new()), base_currency);
+            let previous_snapshot =
+                create_initial_snapshot("acc_1", account_currency, "2026-05-04");
+            let mut drip = create_default_activity(
+                "overflow-drip-1",
+                ActivityType::Dividend,
+                "AAPL",
+                quantity,
+                Decimal::ZERO,
+                Decimal::ZERO,
+                account_currency,
+                target_date_str,
+            );
+            drip.subtype = Some("DRIP".to_string());
+            drip.unit_price = None;
+            drip.amount = Some(Decimal::MAX);
+
+            let activities_today = DefaultActivityCompiler::new().compile(&drip).unwrap();
+            let result = calculator
+                .calculate_next_holdings(&previous_snapshot, &activities_today, target_date)
+                .unwrap();
+
+            let position = result.snapshot.positions.get("AAPL").unwrap();
+            assert_eq!(position.quantity, quantity);
+            assert_eq!(position.total_cost_basis, expected_basis);
+            assert_eq!(position.basis_status(), expected_status);
+            assert_eq!(
+                result.snapshot.cash_balances.get(account_currency),
+                Some(&Decimal::ZERO)
+            );
+        }
+    }
+
+    #[test]
     fn test_activity_buckets_to_user_local_day_boundary() {
         let mut calculator = create_calculator_with_timezone(
             Arc::new(MockFxService::new()),
