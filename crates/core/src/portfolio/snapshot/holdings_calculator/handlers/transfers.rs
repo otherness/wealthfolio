@@ -77,7 +77,10 @@ fn split_lots_by_cover_quantity(lots: &[Lot], cover_qty_abs: Decimal) -> (Vec<Lo
 impl HoldingsCalculator {
     /// Handle TRANSFER_IN activity.
     /// Books cash/asset inflow in ACTIVITY currency.
-    /// Transfers always affect account-level net_contribution; portfolio boundary is handled by aggregation.
+    /// Ordinary transfers increase account-level net_contribution and
+    /// net_contribution_base; a cash leg in a qualified same-account internal FX
+    /// pair still books cash but is contribution-neutral. Portfolio boundary is
+    /// handled by aggregation.
     pub(crate) fn handle_transfer_in(
         &self,
         activity: &Activity,
@@ -399,7 +402,10 @@ impl HoldingsCalculator {
 
     /// Handle TRANSFER_OUT activity.
     /// Books cash/asset outflow in ACTIVITY currency.
-    /// Transfers always affect account-level net_contribution; portfolio boundary is handled by aggregation.
+    /// Ordinary transfers decrease account-level net_contribution and
+    /// net_contribution_base; a cash leg in a qualified same-account internal FX
+    /// pair still books cash but is contribution-neutral. Portfolio boundary is
+    /// handled by aggregation.
     pub(crate) fn handle_transfer_out(
         &self,
         activity: &Activity,
