@@ -47,6 +47,14 @@ function getProviderSuffixCompatibilityFilenames(symbol: string): string[] {
   return baseSymbol && marketMic ? [`${baseSymbol}-${marketMic}`, baseSymbol] : [];
 }
 
+function getCryptoProviderCompatibilityFilenames(symbol: string): string[] {
+  const pairMatch = /^(.+)-([A-Z]{3,5})$/.exec(symbol);
+  if (!pairMatch) return [];
+
+  const baseSymbol = normalizeFilenameSymbol(pairMatch[1]);
+  return baseSymbol ? [`crypto/${baseSymbol}`] : [];
+}
+
 function isCryptoInstrument(instrumentType: unknown): boolean {
   if (typeof instrumentType !== "string") return false;
   const normalized = instrumentType.trim().toUpperCase();
@@ -86,9 +94,13 @@ export function resolveTickerLogoFilenames(
   const exactFilename = resolveTickerLogoFilename(symbol, exchangeMic, instrumentType);
   if (!exactFilename) return [];
 
-  if (isCryptoInstrument(instrumentType)) return [exactFilename];
-
   const normalizedSymbol = normalizeTickerLogoSymbol(symbol) ?? "";
+  if (isCryptoInstrument(instrumentType)) {
+    return [exactFilename, ...getCryptoProviderCompatibilityFilenames(normalizedSymbol)].filter(
+      (filename, index, filenames) => filenames.indexOf(filename) === index,
+    );
+  }
+
   const providerCompatibilityFilenames = getProviderSuffixCompatibilityFilenames(normalizedSymbol);
 
   const canonicalMatch = CANONICAL_MARKET_SUFFIX.exec(exactFilename);

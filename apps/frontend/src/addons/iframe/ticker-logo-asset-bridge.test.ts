@@ -64,6 +64,10 @@ describe("TickerLogoAssetBridge", () => {
     expect(resolveTickerLogoFilenames("BRK.B")).toEqual(["BRK-B"]);
     expect(resolveTickerLogoFilenames("BRK.B", "XNYS")).toEqual(["BRK-B-XNYS", "BRK-B"]);
     expect(resolveTickerLogoFilenames("BTC", null, "CRYPTO")).toEqual(["crypto/BTC"]);
+    expect(resolveTickerLogoFilenames("BTC-USD", null, "CRYPTOCURRENCY")).toEqual([
+      "crypto/BTC-USD",
+      "crypto/BTC",
+    ]);
   });
 
   it("deduplicates concurrent requests and bounds the Blob LRU", async () => {
@@ -159,6 +163,30 @@ describe("TickerLogoAssetBridge", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("uses a base-symbol custom logo for a provider-formatted addon symbol", async () => {
+    const fetchMock = vi.fn();
+    const registry = registryWith("shop", "SHOP", "custom-shop");
+    const bridge = new TickerLogoAssetBridge(fetchMock as unknown as typeof fetch, 2, registry);
+
+    const logo = await bridge.load("SHOP.TO");
+
+    expect(logo).toBeInstanceOf(Blob);
+    await expect(logo!.text()).resolves.toBe("custom-shop");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not treat an unsupported hyphen suffix as a custom-logo base symbol", async () => {
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(pngResponse("bundled")));
+    const registry = registryWith("brk", "BRK", "wrong-custom");
+    const bridge = new TickerLogoAssetBridge(fetchMock as unknown as typeof fetch, 2, registry);
+
+    const logo = await bridge.load("BRK-B");
+
+    expect(logo).toBeInstanceOf(Blob);
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/ticker-logos/BRK-B.png");
+  });
+
   it("shows a new override without evicting the bundled cache", async () => {
     const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(pngResponse("bundled")));
     const registry = new AssetLogoRegistry(vi.fn().mockResolvedValue(customLogo("a1", "override")));
@@ -248,5 +276,18 @@ describe("TickerLogoAssetBridge", () => {
     await expect(bridge.load("BTC", null, "CRYPTOCURRENCY")).resolves.toBeInstanceOf(Blob);
     expect(fetchMock).toHaveBeenCalledOnce();
     expect(String(fetchMock.mock.calls[0][0])).toContain("/ticker-logos/crypto/BTC.png");
+  });
+
+  it("falls back from a provider-formatted crypto symbol to its canonical base", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(null, { status: 404 }))
+      .mockResolvedValueOnce(pngResponse());
+    const bridge = new TickerLogoAssetBridge(fetchMock as unknown as typeof fetch);
+
+    await expect(bridge.load("BTC-USD", null, "CRYPTOCURRENCY")).resolves.toBeInstanceOf(Blob);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[0][0])).toContain("/ticker-logos/crypto/BTC-USD.png");
+    expect(String(fetchMock.mock.calls[1][0])).toContain("/ticker-logos/crypto/BTC.png");
   });
 });

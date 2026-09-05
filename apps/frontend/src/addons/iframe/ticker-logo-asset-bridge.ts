@@ -36,13 +36,27 @@ export class TickerLogoAssetBridge {
       return Promise.resolve(null);
     }
 
-    // Custom logos are consulted before the bundled LRU on every call, so a new
-    // upload is visible without evicting anything. Limitation: an already mounted
-    // SandboxTickerAvatar only picks the change up on its next mount (host→sandbox
-    // broadcast is a follow-up).
-    return this.registry
-      .load({ symbol: normalized })
-      .then((uri) => (uri ? dataUriToBlob(uri) : this.loadBundledCandidates(filenames)));
+    // Custom logos are consulted before the bundled LRU on every call, including
+    // the base-symbol fallback historically performed by SandboxTickerAvatar.
+    // Limitation: an already mounted avatar only picks up a new upload on remount
+    // (host→sandbox broadcast is a follow-up).
+    const fallbackFilename = filenames.length > 1 ? filenames.at(-1) : undefined;
+    const fallbackSymbol = fallbackFilename?.replace(/^crypto\//, "");
+    const customSymbols = [normalized, fallbackSymbol].filter(
+      (candidate, index, candidates): candidate is string =>
+        !!candidate && candidates.indexOf(candidate) === index,
+    );
+    return this.loadCustomCandidates(customSymbols).then(
+      (logo) => logo ?? this.loadBundledCandidates(filenames),
+    );
+  }
+
+  private async loadCustomCandidates(symbols: string[]): Promise<Blob | null> {
+    for (const symbol of symbols) {
+      const uri = await this.registry.load({ symbol });
+      if (uri) return dataUriToBlob(uri);
+    }
+    return null;
   }
 
   private async loadBundledCandidates(filenames: string[]): Promise<Blob | null> {
