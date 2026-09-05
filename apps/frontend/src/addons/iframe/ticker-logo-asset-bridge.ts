@@ -1,4 +1,11 @@
 import { assetLogoRegistry, type AssetLogoRegistry } from "@/lib/asset-logo-registry";
+import { normalizeTickerLogoSymbol, resolveTickerLogoFilenames } from "@wealthfolio/ui";
+
+export {
+  normalizeTickerLogoSymbol,
+  resolveTickerLogoFilename,
+  resolveTickerLogoFilenames,
+} from "@wealthfolio/ui";
 
 const MAX_TICKER_LOGO_BYTES = 512 * 1024;
 const DEFAULT_CACHE_SIZE = 256;
@@ -12,24 +19,6 @@ function dataUriToBlob(dataUri: string): Blob {
   return new Blob([bytes], { type: mimeType });
 }
 
-export function normalizeTickerLogoSymbol(symbol: unknown) {
-  if (typeof symbol !== "string") {
-    return undefined;
-  }
-
-  const normalized = symbol.trim().toUpperCase();
-  if (
-    !normalized ||
-    normalized.includes("..") ||
-    normalized.includes("/") ||
-    normalized.includes("\\") ||
-    !/^[A-Z0-9$^._:-]+$/.test(normalized)
-  ) {
-    return undefined;
-  }
-  return normalized;
-}
-
 export class TickerLogoAssetBridge {
   private readonly cache = new Map<string, Blob | null>();
   private readonly pending = new Map<string, Promise<Blob | null>>();
@@ -40,9 +29,10 @@ export class TickerLogoAssetBridge {
     private readonly registry: AssetLogoRegistry = assetLogoRegistry,
   ) {}
 
-  load(symbol: unknown): Promise<Blob | null> {
+  load(symbol: unknown, exchangeMic?: unknown, instrumentType?: unknown): Promise<Blob | null> {
     const normalized = normalizeTickerLogoSymbol(symbol);
-    if (!normalized) {
+    const filenames = resolveTickerLogoFilenames(symbol, exchangeMic, instrumentType);
+    if (!normalized || filenames.length === 0) {
       return Promise.resolve(null);
     }
 
@@ -52,26 +42,34 @@ export class TickerLogoAssetBridge {
     // broadcast is a follow-up).
     return this.registry
       .load({ symbol: normalized })
-      .then((uri) => (uri ? dataUriToBlob(uri) : this.loadBundled(normalized)));
+      .then((uri) => (uri ? dataUriToBlob(uri) : this.loadBundledCandidates(filenames)));
   }
 
-  private loadBundled(normalized: string): Promise<Blob | null> {
-    const cached = this.cache.get(normalized);
+  private async loadBundledCandidates(filenames: string[]): Promise<Blob | null> {
+    for (const filename of filenames) {
+      const logo = await this.loadBundled(filename);
+      if (logo) return logo;
+    }
+    return null;
+  }
+
+  private loadBundled(filename: string): Promise<Blob | null> {
+    const cached = this.cache.get(filename);
     if (cached !== undefined) {
-      this.cache.delete(normalized);
-      this.cache.set(normalized, cached);
+      this.cache.delete(filename);
+      this.cache.set(filename, cached);
       return Promise.resolve(cached);
     }
 
-    const inFlight = this.pending.get(normalized);
+    const inFlight = this.pending.get(filename);
     if (inFlight) {
       return inFlight;
     }
 
-    const request = this.fetchLogo(normalized).finally(() => {
-      this.pending.delete(normalized);
+    const request = this.fetchLogo(filename).finally(() => {
+      this.pending.delete(filename);
     });
-    this.pending.set(normalized, request);
+    this.pending.set(filename, request);
     return request;
   }
 
@@ -83,7 +81,10 @@ export class TickerLogoAssetBridge {
     try {
       const basePath = import.meta.env.BASE_URL || "/";
       const url = new URL(
-        `${basePath.replace(/\/?$/, "/")}ticker-logos/${encodeURIComponent(symbol)}.png`,
+        `${basePath.replace(/\/?$/, "/")}ticker-logos/${symbol
+          .split("/")
+          .map(encodeURIComponent)
+          .join("/")}.png`,
         window.location.href,
       );
       // WebKit brand-checks Window.fetch; a normal class-field call uses this bridge as receiver.

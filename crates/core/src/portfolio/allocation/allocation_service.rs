@@ -985,6 +985,14 @@ impl AllocationService {
                     source_account_ids: holding.source_account_ids.clone(),
                     symbol: symbol.clone(),
                     name: name.clone(),
+                    exchange_mic: holding
+                        .instrument
+                        .as_ref()
+                        .and_then(|instrument| instrument.exchange_mic.clone()),
+                    instrument_type: holding
+                        .instrument
+                        .as_ref()
+                        .and_then(|instrument| instrument.instrument_type.clone()),
                     holding_type: holding.holding_type.clone(),
                     quantity: holding.quantity,
                     category_id,
@@ -1122,6 +1130,14 @@ impl AllocationService {
                     id: asset_id,
                     symbol,
                     name: Some(name),
+                    exchange_mic: holding
+                        .instrument
+                        .as_ref()
+                        .and_then(|instrument| instrument.exchange_mic.clone()),
+                    instrument_type: holding
+                        .instrument
+                        .as_ref()
+                        .and_then(|instrument| instrument.instrument_type.clone()),
                     account_name: Self::cash_account_name(holding, &account_names),
                     holding_type: holding.holding_type.clone(),
                     quantity: holding.quantity,

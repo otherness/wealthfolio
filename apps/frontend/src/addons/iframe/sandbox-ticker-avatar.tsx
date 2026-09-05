@@ -3,16 +3,29 @@ import { Avatar, AvatarFallback, AvatarImage, cn } from "@wealthfolio/ui";
 
 interface SandboxTickerAvatarProps {
   symbol: string;
+  exchangeMic?: string | null;
+  instrumentType?: string | null;
   className?: string;
 }
 
 declare global {
   // Private sandbox bridge installed by addon-sandbox-entry.tsx.
   // eslint-disable-next-line no-var
-  var __wealthfolioRequestTickerLogo: ((symbol: string) => Promise<Blob | null>) | undefined;
+  var __wealthfolioRequestTickerLogo:
+    | ((
+        symbol: string,
+        exchangeMic?: string | null,
+        instrumentType?: string | null,
+      ) => Promise<Blob | null>)
+    | undefined;
 }
 
-export const SandboxTickerAvatar = ({ symbol, className = "size-8" }: SandboxTickerAvatarProps) => {
+export const SandboxTickerAvatar = ({
+  symbol,
+  exchangeMic,
+  instrumentType,
+  className = "size-8",
+}: SandboxTickerAvatarProps) => {
   const baseSymbol = symbol ? symbol.split(/[.:-]/)[0].toUpperCase() : "";
   const fullSymbol = symbol ? symbol.toUpperCase() : "";
   const fallbackAvatarLabel = baseSymbol ? baseSymbol.slice(0, 4) : "•";
@@ -29,12 +42,9 @@ export const SandboxTickerAvatar = ({ symbol, className = "size-8" }: SandboxTic
         return;
       }
 
-      let logo = await requestLogo(fullSymbol);
+      const logo = await requestLogo(fullSymbol, exchangeMic, instrumentType);
       if (cancelled) {
         return;
-      }
-      if (!logo && baseSymbol && baseSymbol !== fullSymbol) {
-        logo = await requestLogo(baseSymbol);
       }
       if (!logo || cancelled) {
         return;
@@ -50,15 +60,11 @@ export const SandboxTickerAvatar = ({ symbol, className = "size-8" }: SandboxTic
         URL.revokeObjectURL(objectUrl);
       }
     };
-  }, [baseSymbol, fullSymbol]);
+  }, [exchangeMic, fullSymbol, instrumentType]);
 
   return (
-    <Avatar
-      className={cn("bg-primary/80 dark:bg-primary/20 border-white/20 backdrop-blur-md", className)}
-    >
-      {logoUrl ? (
-        <AvatarImage src={logoUrl} alt={fullSymbol} className="object-contain p-2" />
-      ) : null}
+    <Avatar className={className}>
+      {logoUrl ? <AvatarImage src={logoUrl} alt={fullSymbol} className="object-cover p-0" /> : null}
       <AvatarFallback className="bg-primary/80 dark:bg-primary/20 font-medium text-white">
         <span
           className={cn(

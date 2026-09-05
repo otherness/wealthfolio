@@ -88,6 +88,8 @@ function HoldingRow({
       <div className="flex min-w-0 flex-1 items-center gap-3">
         <TickerAvatar
           symbol={avatarSymbol}
+          exchangeMic={holding.instrument?.exchangeMic}
+          instrumentType={holding.instrument?.instrumentType}
           assetId={holding.instrument?.id}
           className="size-9 shrink-0"
         />
@@ -153,6 +155,8 @@ function StackedAvatars({ holdings, totalRemaining, onClick }: StackedAvatarsPro
             >
               <TickerAvatar
                 symbol={avatarSym}
+                exchangeMic={holding.instrument?.exchangeMic}
+                instrumentType={holding.instrument?.instrumentType}
                 assetId={holding.instrument?.id}
                 className="ring-background size-8 ring-2"
               />

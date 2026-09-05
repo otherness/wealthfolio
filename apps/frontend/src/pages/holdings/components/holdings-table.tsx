@@ -336,6 +336,8 @@ const getColumns = (
         <div className="flex items-center">
           <TickerAvatar
             symbol={avatarSymbol}
+            exchangeMic={holding.instrument?.exchangeMic}
+            instrumentType={holding.instrument?.instrumentType}
             assetId={holding.instrument?.id}
             className="mr-2 h-8 w-8"
           />

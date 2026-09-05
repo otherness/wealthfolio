@@ -194,6 +194,8 @@ export const ActivityTableMobile = ({
                 <>
                   <TickerAvatar
                     symbol={avatarSymbol}
+                    exchangeMic={activity.exchangeMic}
+                    instrumentType={activity.instrumentType}
                     assetId={activity.assetId}
                     className="h-10 w-10 flex-shrink-0"
                   />
@@ -268,6 +270,8 @@ export const ActivityTableMobile = ({
                 <>
                   <TickerAvatar
                     symbol={avatarSymbol}
+                    exchangeMic={activity.exchangeMic}
+                    instrumentType={activity.instrumentType}
                     assetId={activity.assetId}
                     className="h-10 w-10"
                   />

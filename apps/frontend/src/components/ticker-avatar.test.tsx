@@ -107,6 +107,7 @@ describe("TickerAvatar", () => {
     await waitFor(() =>
       expect(view.container.querySelector("img")).toHaveAttribute("src", "/ticker-logos/AAPL.png"),
     );
+    expect(view.container.querySelector("img")).toHaveClass("object-cover", "p-0");
     expect(view.container.querySelector("[data-logo-source]")).toHaveAttribute(
       "data-logo-source",
       "bundled",
@@ -146,10 +147,10 @@ describe("TickerAvatar", () => {
   });
 
   it("falls back to initials when every candidate fails", async () => {
-    failingSources.add("/ticker-logos/SHOP.TO.png");
+    failingSources.add("/ticker-logos/SHOP-XTSE.png");
     failingSources.add("/ticker-logos/SHOP.png");
 
-    const view = render(<TickerAvatar symbol="SHOP.TO" />);
+    const view = render(<TickerAvatar symbol="SHOP" exchangeMic="XTSE" />);
 
     await waitFor(() =>
       expect(view.container.querySelector("[data-logo-source]")).toHaveAttribute(
@@ -158,7 +159,43 @@ describe("TickerAvatar", () => {
       ),
     );
     expect(view.container.querySelector("img")).toBeNull();
-    expect(screen.getByTitle("SHOP.TO")).toHaveTextContent("SHOP");
+    expect(screen.getByTitle("SHOP")).toHaveTextContent("SHOP");
+  });
+
+  it("uses the exchange MIC with a canonical base symbol", async () => {
+    const view = render(<TickerAvatar symbol="SHOP" exchangeMic="XTSE" />);
+
+    await waitFor(() =>
+      expect(view.container.querySelector("img")).toHaveAttribute(
+        "src",
+        "/ticker-logos/SHOP-XTSE.png",
+      ),
+    );
+  });
+
+  it("falls back from the exact market logo to the unsuffixed logo", async () => {
+    failingSources.add("/ticker-logos/SHOP-XTSE.png");
+
+    const view = render(<TickerAvatar symbol="SHOP" exchangeMic="XTSE" />);
+
+    await waitFor(() =>
+      expect(view.container.querySelector("img")).toHaveAttribute("src", "/ticker-logos/SHOP.png"),
+    );
+  });
+
+  it("uses the crypto namespace without falling back to an equity logo", async () => {
+    failingSources.add("/ticker-logos/crypto/ACT.png");
+
+    const view = render(<TickerAvatar symbol="ACT" instrumentType="CRYPTO" />);
+
+    await waitFor(() =>
+      expect(view.container.querySelector("[data-logo-source]")).toHaveAttribute(
+        "data-logo-source",
+        "initials",
+      ),
+    );
+    expect(view.container.querySelector("img")).toBeNull();
+    expect(screen.getByTitle("ACT")).toHaveTextContent("ACT");
   });
 
   it("lets the asset id win over a symbol-only match", async () => {

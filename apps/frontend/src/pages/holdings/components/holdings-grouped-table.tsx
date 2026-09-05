@@ -270,6 +270,8 @@ function HoldingRow({
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <TickerAvatar
             symbol={avatarSymbol}
+            exchangeMic={holding.instrument?.exchangeMic}
+            instrumentType={holding.instrument?.instrumentType}
             assetId={holding.instrument?.id}
             className="h-8 w-8 flex-shrink-0"
           />

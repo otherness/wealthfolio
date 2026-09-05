@@ -18,6 +18,8 @@ interface ClassificationSheetProps {
   assetId: string;
   assetName?: string;
   assetSymbol?: string;
+  assetExchangeMic?: string | null;
+  assetInstrumentType?: string | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
@@ -34,6 +36,8 @@ export function ClassificationSheet({
   assetId,
   assetName,
   assetSymbol,
+  assetExchangeMic,
+  assetInstrumentType,
   open,
   onOpenChange,
 }: ClassificationSheetProps) {
@@ -71,7 +75,13 @@ export function ClassificationSheet({
         <SheetHeader className="shrink-0 pb-4">
           <div className="flex items-center gap-3">
             {assetSymbol && (
-              <TickerAvatar symbol={assetSymbol} assetId={assetId} className="size-10" />
+              <TickerAvatar
+                symbol={assetSymbol}
+                assetId={assetId}
+                exchangeMic={assetExchangeMic}
+                instrumentType={assetInstrumentType}
+                className="size-10"
+              />
             )}
             <div className="min-w-0 flex-1">
               <SheetTitle className="truncate text-lg">

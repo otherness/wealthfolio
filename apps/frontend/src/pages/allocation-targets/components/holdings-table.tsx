@@ -43,11 +43,15 @@ function HoldingAvatar({
   isCash,
   symbol,
   assetId,
+  exchangeMic,
+  instrumentType,
   className = "size-6",
 }: {
   isCash: boolean;
   symbol: string;
   assetId?: string;
+  exchangeMic?: string | null;
+  instrumentType?: string | null;
   className?: string;
 }) {
   if (isCash) {
@@ -67,8 +71,9 @@ function HoldingAvatar({
     <TickerAvatar
       symbol={symbol === "-" ? "?" : symbol}
       assetId={assetId}
+      exchangeMic={exchangeMic}
+      instrumentType={instrumentType}
       className={cn("shrink-0", className)}
-      imageClassName="object-contain p-1"
     />
   );
 }
@@ -169,6 +174,8 @@ export function HoldingsTable({ report }: HoldingsTableProps) {
                       isCash={row.isCash}
                       symbol={row.symbol}
                       assetId={row.assetId}
+                      exchangeMic={row.exchangeMic}
+                      instrumentType={row.instrumentType}
                       className="size-7"
                     />
                   </div>
@@ -263,6 +270,8 @@ export function HoldingsTable({ report }: HoldingsTableProps) {
                           isCash={row.isCash}
                           symbol={row.symbol}
                           assetId={row.assetId}
+                          exchangeMic={row.exchangeMic}
+                          instrumentType={row.instrumentType}
                         />
                         <div className="flex min-w-0 items-baseline gap-2">
                           <span className="text-foreground shrink-0 text-[12px] font-semibold">

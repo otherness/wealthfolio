@@ -238,6 +238,8 @@ export function AssetsTableMobile({
                     <>
                       <TickerAvatar
                         symbol={avatarSymbol}
+                        exchangeMic={asset.instrumentExchangeMic}
+                        instrumentType={asset.instrumentType}
                         assetId={asset.id}
                         className="h-10 w-10 flex-shrink-0"
                       />

@@ -755,6 +755,8 @@ export function AssetClassificationToolUIContentImpl({
                     <TickerAvatar
                       symbol={avatarSymbol}
                       assetId={candidate.assetId}
+                      exchangeMic={candidate.exchangeMic}
+                      instrumentType={candidate.instrumentType}
                       className="size-8 shrink-0"
                     />
                     <div className="min-w-0">
