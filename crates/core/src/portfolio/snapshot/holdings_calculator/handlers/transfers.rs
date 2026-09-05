@@ -98,32 +98,34 @@ impl HoldingsCalculator {
             let (cash_currency, cash_effect) = cash_booking(activity, cash_effect);
             add_cash(state, &cash_currency, cash_effect);
 
-            let amount_acct = self.convert_to_account_currency(
-                gross_effect,
-                activity,
-                account_currency,
-                "TransferIn Cash",
-            );
+            if !run.is_contribution_neutral_transfer(&activity.id) {
+                let amount_acct = self.convert_to_account_currency(
+                    gross_effect,
+                    activity,
+                    account_currency,
+                    "TransferIn Cash",
+                );
 
-            let base_ccy = self.base_currency.read().unwrap();
-            let amount_base = match self.fx_service.convert_currency_for_date(
-                gross_effect,
-                activity_currency,
-                &base_ccy,
-                activity_date,
-            ) {
-                Ok(c) => c,
-                Err(e) => {
-                    warn!(
-                        "Holdings Calc (NetContrib TransferIn Cash {}): Failed conversion {}: {}.",
-                        activity.id, activity_currency, e
-                    );
-                    Decimal::ZERO
-                }
-            };
+                let base_ccy = self.base_currency.read().unwrap();
+                let amount_base = match self.fx_service.convert_currency_for_date(
+                    gross_effect,
+                    activity_currency,
+                    &base_ccy,
+                    activity_date,
+                ) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        warn!(
+                            "Holdings Calc (NetContrib TransferIn Cash {}): Failed conversion {}: {}.",
+                            activity.id, activity_currency, e
+                        );
+                        Decimal::ZERO
+                    }
+                };
 
-            state.net_contribution += amount_acct;
-            state.net_contribution_base += amount_base;
+                state.net_contribution += amount_acct;
+                state.net_contribution_base += amount_base;
+            }
         } else {
             // Asset transfer
             let activity_date = self.activity_local_date(activity);
@@ -418,32 +420,34 @@ impl HoldingsCalculator {
             let (cash_currency, cash_effect) = cash_booking(activity, cash_effect);
             add_cash(state, &cash_currency, cash_effect);
 
-            let amount_acct = self.convert_to_account_currency(
-                gross_effect,
-                activity,
-                account_currency,
-                "TransferOut Cash",
-            );
+            if !run.is_contribution_neutral_transfer(&activity.id) {
+                let amount_acct = self.convert_to_account_currency(
+                    gross_effect,
+                    activity,
+                    account_currency,
+                    "TransferOut Cash",
+                );
 
-            let base_ccy = self.base_currency.read().unwrap();
-            let amount_base = match self.fx_service.convert_currency_for_date(
-                gross_effect,
-                activity_currency,
-                &base_ccy,
-                activity_date,
-            ) {
-                Ok(c) => c,
-                Err(e) => {
-                    warn!(
-                        "Holdings Calc (NetContrib TransferOut Cash {}): Failed conversion {}: {}.",
-                        activity.id, activity_currency, e
-                    );
-                    Decimal::ZERO
-                }
-            };
+                let base_ccy = self.base_currency.read().unwrap();
+                let amount_base = match self.fx_service.convert_currency_for_date(
+                    gross_effect,
+                    activity_currency,
+                    &base_ccy,
+                    activity_date,
+                ) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        warn!(
+                            "Holdings Calc (NetContrib TransferOut Cash {}): Failed conversion {}: {}.",
+                            activity.id, activity_currency, e
+                        );
+                        Decimal::ZERO
+                    }
+                };
 
-            state.net_contribution += amount_acct;
-            state.net_contribution_base += amount_base;
+                state.net_contribution += amount_acct;
+                state.net_contribution_base += amount_base;
+            }
         } else {
             // Asset transfer
             if !cash_effect.is_zero() {

@@ -10640,6 +10640,113 @@ mod tests {
         assert_eq!(performance.attribution.residual, Decimal::ZERO);
     }
 
+    #[tokio::test]
+    async fn imported_same_account_cash_fx_has_no_external_flow_or_twr_cash_flow() {
+        let fx_service = Arc::new(MockFxService::new());
+        let activity_repository = Arc::new(MockActivityRepository::new());
+        let fx_metadata = json!({
+            "flow": { "is_external": false },
+            "fx": {
+                "sourceCurrency": "EUR",
+                "destinationCurrency": "USD",
+                "sourceAmount": "106.03",
+                "destinationAmount": "124.9743801",
+                "impliedRate": "1.1786646232198434405356974441",
+                "rateSource": "implied_from_import"
+            }
+        });
+
+        let mut transfer_out = create_stored_activity("fx-out", "acc-eur", None);
+        transfer_out.activity_type = "TRANSFER_OUT".to_string();
+        transfer_out.activity_date = parse_test_activity_datetime("2026-04-14");
+        transfer_out.amount = Some(dec!(106.03));
+        transfer_out.currency = "EUR".to_string();
+        transfer_out.source_group_id = Some("ibkr-fx-execution".to_string());
+        transfer_out.metadata = Some(fx_metadata.clone());
+
+        let mut transfer_in = create_stored_activity("fx-in", "acc-eur", None);
+        transfer_in.activity_type = "TRANSFER_IN".to_string();
+        transfer_in.activity_date = parse_test_activity_datetime("2026-04-14");
+        transfer_in.amount = Some(dec!(124.9743801));
+        transfer_in.currency = "USD".to_string();
+        transfer_in.source_group_id = Some("ibkr-fx-execution".to_string());
+        transfer_in.metadata = Some(fx_metadata);
+
+        activity_repository.add_activity(transfer_out);
+        activity_repository.add_activity(transfer_in);
+
+        let mut start = create_daily_valuation(
+            "acc-eur",
+            "2026-04-13",
+            dec!(1000),
+            Decimal::ZERO,
+            dec!(1000),
+            dec!(1000),
+        );
+        let mut end = create_daily_valuation(
+            "acc-eur",
+            "2026-04-14",
+            dec!(1003.42),
+            Decimal::ZERO,
+            dec!(1003.42),
+            dec!(1000),
+        );
+        for valuation in [&mut start, &mut end] {
+            valuation.account_currency = "EUR".to_string();
+            valuation.base_currency = "EUR".to_string();
+        }
+
+        let valuation_repository = Arc::new(MockValuationRepository::new(vec![start, end]));
+        let quote_service = Arc::new(MockQuoteService);
+        let valuation_service = Arc::new(
+            ValuationService::new(
+                Arc::new(RwLock::new("EUR".to_string())),
+                valuation_repository,
+                Arc::new(MockSnapshotService),
+                quote_service.clone(),
+                fx_service.clone(),
+            )
+            .with_activity_repository(
+                activity_repository.clone(),
+                Arc::new(RwLock::new("UTC".to_string())),
+            ),
+        );
+        let account_ids = vec!["acc-eur".to_string()];
+        let start_date = NaiveDate::parse_from_str("2026-04-13", "%Y-%m-%d").unwrap();
+        let end_date = NaiveDate::parse_from_str("2026-04-14", "%Y-%m-%d").unwrap();
+
+        let scoped_valuations = valuation_service
+            .get_historical_valuations_for_accounts(
+                "scope:same-account-fx",
+                &account_ids,
+                "EUR",
+                Some(start_date),
+                Some(end_date),
+            )
+            .expect("same-account FX valuations should load");
+        assert_eq!(scoped_valuations[1].external_inflow_base, Decimal::ZERO);
+        assert_eq!(scoped_valuations[1].external_outflow_base, Decimal::ZERO);
+
+        let performance_service = PerformanceService::new(valuation_service, quote_service)
+            .with_activity_repository(activity_repository, fx_service);
+        let performance = performance_service
+            .calculate_performance_history_for_accounts(
+                "scope:same-account-fx",
+                &account_ids,
+                "EUR",
+                &HashMap::new(),
+                &HashMap::new(),
+                Some(start_date),
+                Some(end_date),
+            )
+            .await
+            .expect("same-account FX performance should calculate");
+
+        assert_eq!(performance.attribution.contributions, Decimal::ZERO);
+        assert_eq!(performance.attribution.distributions, Decimal::ZERO);
+        assert_eq!(performance.returns.twr, Some(dec!(0.00342)));
+    }
+
     #[test]
     fn scoped_flow_pipeline_uses_removed_lot_basis_for_unquoted_cross_scope_outbound_pair() {
         let activity_repository = Arc::new(MockActivityRepository::new());
