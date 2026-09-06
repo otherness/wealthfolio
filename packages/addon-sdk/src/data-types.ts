@@ -401,8 +401,11 @@ export interface ActivityImport {
   lineNumber?: number;
   isDraft: boolean;
   forceImport?: boolean;
-  /** Whether a transfer or credit crosses the tracked-account boundary.
-   * Persisted as `metadata.flow.is_external` so net-contribution and flow classification work. */
+  /**
+   * Whether a transfer or credit crosses the tracked-account boundary.
+   * Controls flow classification; internal transfers may omit
+   * `metadata.flow.is_external` because false is the default.
+   */
   isExternal?: boolean;
   comment?: string;
 }
