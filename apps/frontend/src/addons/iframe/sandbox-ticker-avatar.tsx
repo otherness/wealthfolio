@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Avatar, AvatarFallback, AvatarImage, cn } from "@wealthfolio/ui";
+import { Avatar, AvatarFallback, AvatarImage, cn, getCashAvatarLabel } from "@wealthfolio/ui";
 
 interface SandboxTickerAvatarProps {
   symbol: string;
@@ -29,6 +29,7 @@ export const SandboxTickerAvatar = ({
   const baseSymbol = symbol ? symbol.split(/[.:-]/)[0].toUpperCase() : "";
   const fullSymbol = symbol ? symbol.toUpperCase() : "";
   const fallbackAvatarLabel = baseSymbol ? baseSymbol.slice(0, 4) : "•";
+  const cashAvatarLabel = getCashAvatarLabel(fullSymbol);
   const [logoUrl, setLogoUrl] = useState<string>();
 
   useEffect(() => {
@@ -38,14 +39,11 @@ export const SandboxTickerAvatar = ({
 
     void (async () => {
       const requestLogo = globalThis.__wealthfolioRequestTickerLogo;
-      if (!requestLogo || !fullSymbol) {
+      if (cashAvatarLabel || !requestLogo || !fullSymbol) {
         return;
       }
 
       const logo = await requestLogo(fullSymbol, exchangeMic, instrumentType);
-      if (cancelled) {
-        return;
-      }
       if (!logo || cancelled) {
         return;
       }
@@ -60,7 +58,19 @@ export const SandboxTickerAvatar = ({
         URL.revokeObjectURL(objectUrl);
       }
     };
-  }, [exchangeMic, fullSymbol, instrumentType]);
+  }, [cashAvatarLabel, exchangeMic, fullSymbol, instrumentType]);
+
+  if (cashAvatarLabel) {
+    return (
+      <Avatar key="cash" className={cn("font-semibold", className)}>
+        <AvatarFallback className="bg-primary/80 dark:bg-primary/20 text-xs font-semibold text-white">
+          <span className="p-1" title={fullSymbol}>
+            {cashAvatarLabel}
+          </span>
+        </AvatarFallback>
+      </Avatar>
+    );
+  }
 
   return (
     <Avatar className={className}>

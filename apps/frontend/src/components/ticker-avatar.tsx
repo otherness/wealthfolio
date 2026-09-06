@@ -3,7 +3,13 @@ import { useState } from "react";
 import { useAssetLogoOverride } from "@/lib/asset-logo-registry";
 import { parseOccSymbol } from "@/lib/occ-symbol";
 import { cn } from "@/lib/utils";
-import { Avatar, AvatarFallback, AvatarImage, getTickerLogoPaths } from "@wealthfolio/ui";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+  getCashAvatarLabel,
+  getTickerLogoPaths,
+} from "@wealthfolio/ui";
 
 interface TickerAvatarProps {
   symbol: string;
@@ -16,25 +22,6 @@ interface TickerAvatarProps {
   className?: string;
   imageClassName?: string;
 }
-
-const CASH_AVATAR_LABELS: Record<string, string> = {
-  USD: "$",
-  CAD: "C$",
-  AUD: "A$",
-  NZD: "NZ$",
-};
-
-const CASH_SYMBOL_PATTERN = /^\$?CASH[-_:]([A-Z]{3})$/;
-
-const getCashAvatarLabel = (symbol: string): string | null => {
-  const normalized = symbol.trim().toUpperCase();
-  if (normalized === "$CASH" || normalized === "CASH") return "$";
-
-  const currency = CASH_SYMBOL_PATTERN.exec(normalized)?.[1];
-  if (!currency) return null;
-
-  return CASH_AVATAR_LABELS[currency] ?? currency;
-};
 
 const getFallbackAvatarLabel = (symbol: string): string => symbol.slice(0, 4);
 
@@ -55,7 +42,8 @@ export const TickerAvatar = ({
   const baseSymbol = logoSymbol ? logoSymbol.split(/[.:-]/)[0].toUpperCase() : "";
   const fullSymbol = logoSymbol ? logoSymbol.toUpperCase() : "";
 
-  const override = useAssetLogoOverride({ assetId, symbol: fullSymbol });
+  const cashAvatarLabel = getCashAvatarLabel(fullSymbol);
+  const override = useAssetLogoOverride(cashAvatarLabel ? {} : { assetId, symbol: fullSymbol });
   const customSrc = src ?? override.dataUri;
 
   // Candidate chain: custom override → exact market logo → unsuffixed/shared logo.
@@ -70,7 +58,6 @@ export const TickerAvatar = ({
       ? (override.ref?.sha256 ?? "")
       : "";
   const chainKey = `${customKey}\n${bundledLogoUrls.join("\n")}`;
-  const cashAvatarLabel = getCashAvatarLabel(fullSymbol);
   const fallbackAvatarLabel = baseSymbol ? getFallbackAvatarLabel(baseSymbol) : "•";
 
   // Index of the candidate currently shown; restarts from 0 whenever the chain changes
@@ -81,7 +68,7 @@ export const TickerAvatar = ({
 
   if (cashAvatarLabel) {
     return (
-      <Avatar className={cn("font-semibold", className)}>
+      <Avatar key="cash" className={cn("font-semibold", className)}>
         <AvatarFallback className="bg-primary/80 dark:bg-primary/20 text-xs font-semibold text-white">
           <span className="p-1" title={fullSymbol}>
             {cashAvatarLabel}

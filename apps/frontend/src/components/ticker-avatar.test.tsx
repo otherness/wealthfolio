@@ -1,6 +1,8 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { TickerAvatar as SharedTickerAvatar } from "@wealthfolio/ui";
+import { getAssetLogo } from "@/adapters";
 import { assetLogoRegistry } from "@/lib/asset-logo-registry";
 import type { AssetLogoSummary } from "@/lib/types";
 import { TickerAvatar } from "./ticker-avatar";
@@ -236,4 +238,60 @@ describe("TickerAvatar", () => {
       "custom",
     );
   });
+});
+
+describe.each([
+  ["app", TickerAvatar],
+  ["shared", SharedTickerAvatar],
+] as const)("%s cash avatar", (_name, AvatarComponent) => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it.each([
+    ["$CASH", "$"],
+    ["CASH:CAD", "C$"],
+    ["$cash-eur", "EUR"],
+  ])("renders %s without probing an image", (symbol, label) => {
+    const image = vi.fn();
+    vi.stubGlobal("Image", image);
+    const view = render(<AvatarComponent symbol={symbol} />);
+
+    expect(view.getByTitle(symbol.toUpperCase())).toHaveTextContent(label);
+    expect(view.container.querySelector("img")).toBeNull();
+    expect(image).not.toHaveBeenCalled();
+  });
+
+  it("keeps ordinary cash-named securities on the image path across cash transitions", async () => {
+    vi.stubGlobal("Image", FakeImage);
+    const view = render(<AvatarComponent symbol="CASH.TO" />);
+    await waitFor(() =>
+      expect(view.container.querySelector("img")).toHaveAttribute(
+        "src",
+        "/ticker-logos/CASH-TO.png",
+      ),
+    );
+
+    view.rerender(<AvatarComponent symbol="$CASH" />);
+    expect(view.getByTitle("$CASH")).toHaveTextContent("$");
+    expect(view.container.querySelector("img")).toBeNull();
+
+    view.rerender(<AvatarComponent symbol="AAPL" />);
+    await waitFor(() =>
+      expect(view.container.querySelector("img")).toHaveAttribute("src", "/ticker-logos/AAPL.png"),
+    );
+  });
+});
+
+it("does not fetch a custom override for the app cash avatar", () => {
+  vi.mocked(getAssetLogo).mockClear();
+  assetLogoRegistry.setIndex([summary("cash", "$CASH")]);
+  try {
+    const view = render(<TickerAvatar symbol="$CASH" assetId="cash" src="preview.png" />);
+    expect(view.getByTitle("$CASH")).toHaveTextContent("$");
+    expect(view.container.querySelector("img")).toBeNull();
+    expect(getAssetLogo).not.toHaveBeenCalled();
+  } finally {
+    assetLogoRegistry.reset();
+  }
 });

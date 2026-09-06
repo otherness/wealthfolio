@@ -1,6 +1,6 @@
 import { useState } from "react";
 
-import { getTickerLogoPaths } from "../../lib/ticker-logo";
+import { getCashAvatarLabel, getTickerLogoPaths } from "../../lib/ticker-logo";
 import { cn } from "../../lib/utils";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 
@@ -17,11 +17,24 @@ export const TickerAvatar = ({ symbol, exchangeMic, instrumentType, className = 
   const fullSymbol = symbol ? symbol.toUpperCase() : "";
   const fallbackAvatarLabel = baseSymbol ? baseSymbol.slice(0, 4) : "•";
 
+  const cashAvatarLabel = getCashAvatarLabel(fullSymbol);
   const candidates = getTickerLogoPaths(fullSymbol, exchangeMic, instrumentType);
   const chainKey = candidates.join("\n");
   const [failed, setFailed] = useState({ chainKey, index: 0 });
   const candidateIndex = failed.chainKey === chainKey ? failed.index : 0;
   const logoUrl = candidates[candidateIndex] ?? "";
+
+  if (cashAvatarLabel) {
+    return (
+      <Avatar key="cash" className={cn("font-semibold", className)}>
+        <AvatarFallback className="bg-primary/80 dark:bg-primary/20 text-xs font-semibold text-white">
+          <span className="p-1" title={fullSymbol}>
+            {cashAvatarLabel}
+          </span>
+        </AvatarFallback>
+      </Avatar>
+    );
+  }
 
   return (
     <Avatar className={className}>
