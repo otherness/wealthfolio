@@ -401,6 +401,9 @@ export interface ActivityImport {
   lineNumber?: number;
   isDraft: boolean;
   forceImport?: boolean;
+  /** Whether a transfer or credit crosses the tracked-account boundary.
+   * Persisted as `metadata.flow.is_external` so net-contribution and flow classification work. */
+  isExternal?: boolean;
   comment?: string;
 }
 

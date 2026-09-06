@@ -439,6 +439,30 @@ run, imported activities, and summary.
 const result = await ctx.api.activities.import(checkedActivities);
 ```
 
+Use `isExternal` to identify whether a transfer or credit crosses the tracked
+Wealthfolio portfolio boundary. For example, an internal transfer can be
+imported explicitly as:
+
+```typescript
+const internalTransfer: ActivityImport = {
+  accountId: "account-123",
+  activityType: "TRANSFER_IN",
+  date: "2026-09-04",
+  currency: "USD",
+  amount: 100,
+  symbol: "",
+  isExternal: false,
+  isValid: true,
+  isDraft: false,
+};
+```
+
+`false` means the activity stays within the tracked portfolio boundary; `true`
+means it crosses that boundary. Do not set `false` for every transfer: when
+omitted, `TRANSFER_IN` and `TRANSFER_OUT` default to internal at the portfolio
+boundary. For `CREDIT`, omission keeps the subtype default (`BONUS` is external;
+other credit subtypes are internal).
+
 #### `checkImport(activities: ActivityImport[]): Promise<ActivityImport[]>`
 
 Validates and normalizes activities without importing them.

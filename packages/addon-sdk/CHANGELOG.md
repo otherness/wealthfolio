@@ -8,6 +8,8 @@ and this project adheres to
 
 ### Added
 
+- Optional `ActivityImport.isExternal` boundary override for transfer and credit
+  imports.
 - `ExchangeRatesAPI.getRatesForDates(pairs)` for batched date-specific FX-rate
   lookups, with per-pair errors and Wealthfolio's standard FX resolution rules.
 - `ctx.api.spending` (`SpendingAPI`) — `isEnabled()`, `getCategories()`,
