@@ -227,6 +227,8 @@ export const HoldingsTableMobile = ({
                   <div className="flex flex-1 items-center gap-3 overflow-hidden">
                     <TickerAvatar
                       symbol={avatarSymbol}
+                      exchangeMic={holding.instrument?.exchangeMic}
+                      instrumentType={holding.instrument?.instrumentType}
                       assetId={holding.instrument?.id}
                       className="h-10 w-10"
                     />

@@ -1433,6 +1433,10 @@ export const AssetProfilePage = () => {
                   assetProfile?.displayCode ??
                   assetId
                 }
+                exchangeMic={
+                  holding?.instrument?.exchangeMic ?? assetProfile?.instrumentExchangeMic
+                }
+                instrumentType={holding?.instrument?.instrumentType ?? assetProfile?.instrumentType}
                 assetId={assetProfile?.id ?? assetId}
                 className="size-9"
                 onEdit={() => setLogoDialogOpen(true)}
@@ -1703,6 +1707,8 @@ export const AssetProfilePage = () => {
         symbol={
           profile?.symbol ?? holding?.instrument?.symbol ?? assetProfile?.displayCode ?? assetId
         }
+        exchangeMic={holding?.instrument?.exchangeMic ?? assetProfile?.instrumentExchangeMic}
+        instrumentType={holding?.instrument?.instrumentType ?? assetProfile?.instrumentType}
         name={assetProfile?.name ?? holding?.instrument?.name}
       />
 

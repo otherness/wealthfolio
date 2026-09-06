@@ -34,6 +34,8 @@ export interface AssetLogoDialogProps {
   onOpenChange: (open: boolean) => void;
   assetId: string;
   symbol: string;
+  exchangeMic?: string | null;
+  instrumentType?: string | null;
   name?: string | null;
 }
 
@@ -70,6 +72,8 @@ export function AssetLogoDialog({ open, onOpenChange, ...bodyProps }: AssetLogoD
 interface AssetLogoDialogBodyProps {
   assetId: string;
   symbol: string;
+  exchangeMic?: string | null;
+  instrumentType?: string | null;
   name?: string | null;
   isMobile: boolean;
   onClose: () => void;
@@ -79,6 +83,8 @@ interface AssetLogoDialogBodyProps {
 function AssetLogoDialogBody({
   assetId,
   symbol,
+  exchangeMic,
+  instrumentType,
   name,
   isMobile,
   onClose,
@@ -133,9 +139,10 @@ function AssetLogoDialogBody({
           <div className="flex w-24 flex-col items-center gap-2">
             <TickerAvatar
               symbol={symbol}
+              exchangeMic={exchangeMic}
+              instrumentType={instrumentType}
               assetId={assetId}
               className={cn("size-20", isReady && "opacity-60")}
-              imageClassName="object-contain p-3"
             />
             <Badge
               variant={hasCustom ? "default" : "secondary"}
@@ -162,9 +169,10 @@ function AssetLogoDialogBody({
               {isReady && (
                 <TickerAvatar
                   symbol={symbol}
+                  exchangeMic={exchangeMic}
+                  instrumentType={instrumentType}
                   src={state.candidate.dataUri}
                   className="size-20"
-                  imageClassName="object-contain p-3"
                 />
               )}
             </AssetLogoDropzone>
@@ -230,6 +238,8 @@ function AssetLogoDialogBody({
         <AssetLogoPreview
           assetId={assetId}
           symbol={symbol}
+          exchangeMic={exchangeMic}
+          instrumentType={instrumentType}
           name={name}
           src={isReady ? state.candidate.dataUri : undefined}
         />

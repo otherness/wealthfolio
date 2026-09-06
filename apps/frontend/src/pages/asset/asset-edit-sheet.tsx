@@ -713,6 +713,8 @@ export function AssetEditSheet({
           <div className="flex items-center gap-3">
             <EditableTickerAvatar
               symbol={asset.displayCode ?? ""}
+              exchangeMic={asset.instrumentExchangeMic}
+              instrumentType={asset.instrumentType}
               assetId={asset.id}
               className="size-10"
               onEdit={() => setLogoDialogOpen(true)}
@@ -722,6 +724,8 @@ export function AssetEditSheet({
               onOpenChange={setLogoDialogOpen}
               assetId={asset.id}
               symbol={asset.displayCode ?? asset.name ?? ""}
+              exchangeMic={asset.instrumentExchangeMic}
+              instrumentType={asset.instrumentType}
               name={asset.name}
             />
             <div className="min-w-0 flex-1">

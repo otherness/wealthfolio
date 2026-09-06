@@ -67,6 +67,7 @@ export const bulkHoldingRowSchema = z
   .object({
     id: z.string(),
     ticker: z.string().min(1, { message: "Ticker is required" }),
+    canonicalSymbol: z.string().optional(),
     name: z.string().optional(),
     sharesOwned: z.coerce
       .number({

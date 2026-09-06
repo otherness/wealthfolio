@@ -117,6 +117,8 @@ interface SandboxMessage {
   runtimeProtocolVersion?: number;
   kind?: string;
   symbol?: string;
+  exchangeMic?: string;
+  instrumentType?: string;
   assetId?: string;
 }
 
@@ -1018,7 +1020,11 @@ export class AddonIframeManager {
       return;
     }
 
-    const logo = await tickerLogoAssetBridge.load(message.symbol);
+    const logo = await tickerLogoAssetBridge.load(
+      message.symbol,
+      message.exchangeMic,
+      message.instrumentType,
+    );
     this.respond(runtime, message.requestId, true, logo);
   }
 

@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils";
 interface EditableTickerAvatarProps {
   symbol: string;
   assetId: string;
+  exchangeMic?: string | null;
+  instrumentType?: string | null;
   className?: string;
   onEdit: () => void;
 }
@@ -18,6 +20,8 @@ interface EditableTickerAvatarProps {
 export function EditableTickerAvatar({
   symbol,
   assetId,
+  exchangeMic,
+  instrumentType,
   className = "size-9",
   onEdit,
 }: EditableTickerAvatarProps) {
@@ -25,7 +29,13 @@ export function EditableTickerAvatar({
 
   return (
     <div className={cn("group relative shrink-0", className)}>
-      <TickerAvatar symbol={symbol} assetId={assetId} className="size-full" />
+      <TickerAvatar
+        symbol={symbol}
+        exchangeMic={exchangeMic}
+        instrumentType={instrumentType}
+        assetId={assetId}
+        className="size-full"
+      />
       <button
         type="button"
         aria-label={t("logo.change")}

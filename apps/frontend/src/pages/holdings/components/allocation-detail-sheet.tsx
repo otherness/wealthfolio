@@ -418,6 +418,8 @@ export function AllocationDetailSheet({
                         <TickerAvatar
                           symbol={avatarSymbol}
                           assetId={holding.id}
+                          exchangeMic={holding.exchangeMic}
+                          instrumentType={holding.instrumentType}
                           className="h-9 w-9"
                         />
                         <div className="min-w-0 flex-1">

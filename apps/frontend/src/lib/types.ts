@@ -754,6 +754,8 @@ export interface HoldingSummary {
   id: string;
   symbol: string;
   name?: string | null;
+  exchangeMic?: string | null;
+  instrumentType?: string | null;
   accountName?: string | null;
   holdingType: HoldingType;
   quantity: number;
@@ -2717,6 +2719,8 @@ export interface DriftHoldingRow {
   sourceAccountIds?: string[];
   symbol: string;
   name: string;
+  exchangeMic?: string | null;
+  instrumentType?: string | null;
   categoryId: string;
   categoryName: string;
   categoryColor?: string | null;

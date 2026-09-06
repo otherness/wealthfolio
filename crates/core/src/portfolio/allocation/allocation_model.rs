@@ -131,6 +131,10 @@ pub struct HoldingAllocationContribution {
     pub source_account_ids: Vec<String>,
     pub symbol: String,
     pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exchange_mic: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instrument_type: Option<crate::assets::InstrumentType>,
     pub holding_type: crate::portfolio::holdings::HoldingType,
     pub quantity: Decimal,
     pub category_id: String,

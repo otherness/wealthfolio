@@ -7,6 +7,8 @@ import { cn } from "@/lib/utils";
 interface AssetLogoPreviewProps {
   assetId: string;
   symbol: string;
+  exchangeMic?: string | null;
+  instrumentType?: string | null;
   name?: string | null;
   /** Candidate image to preview; when omitted the current logo is shown. */
   src?: string;
@@ -22,10 +24,17 @@ const Bar = ({ className }: { className?: string }) => (
  * exact avatar sizes those surfaces use, so a transparent or low-contrast
  * image is caught before it is saved.
  */
-export function AssetLogoPreview({ assetId, symbol, name, src }: AssetLogoPreviewProps) {
+export function AssetLogoPreview({
+  assetId,
+  symbol,
+  exchangeMic,
+  instrumentType,
+  name,
+  src,
+}: AssetLogoPreviewProps) {
   const { t } = useTranslation("asset");
   const isNew = !!src;
-  const avatar = { symbol, assetId, src };
+  const avatar = { symbol, exchangeMic, instrumentType, assetId, src };
   const subtitle = name ?? symbol;
 
   return (
@@ -87,11 +96,7 @@ export function AssetLogoPreview({ assetId, symbol, name, src }: AssetLogoPrevie
             {t("logo.preview_list")}
           </p>
           <div className="flex items-center gap-3">
-            <TickerAvatar
-              {...avatar}
-              className="h-8 w-8 shrink-0"
-              imageClassName="object-contain p-1.5"
-            />
+            <TickerAvatar {...avatar} className="h-8 w-8 shrink-0" />
             <span className="truncate text-sm font-medium">{symbol}</span>
             <Bar className="ml-auto w-14" />
           </div>
